@@ -44,3 +44,20 @@ Hooks into database operations:
 
 ```bash
 npm install sehawq.db
+
+const Database = require("sehawq.db");
+const db = new Database("mydb.json");
+
+// Basic operations
+db.set("user.123.balance", 100);
+console.log(db.get("user.123.balance")); // 100
+
+db.add("user.123.balance", 50);
+console.log(db.get("user.123.balance")); // 150
+
+db.push("user.123.items", "sword");
+console.log(db.get("user.123.items")); // ["sword"]
+
+// Backup & Restore
+db.backup("./backup.json");
+db.restore("./backup.json");
