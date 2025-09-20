@@ -63,3 +63,12 @@ console.log(db.get("user.123.items")); // ["sword"]
 // Backup & Restore
 db.backup("./backup.json");
 db.restore("./backup.json");
+
+🎯 Use Cases
+🤖 Discord Bots — Store economy, user data, levels, inventories.
+
+🛠 CLI Tools — Keep configs and settings persistent.
+
+🌐 Small Web/Desktop Apps — Lightweight local storage.
+
+⚡ Prototyping — Rapid development without complex databases.
