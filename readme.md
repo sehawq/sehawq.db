@@ -45,6 +45,8 @@ Hooks into database operations:
 ```bash
 npm install sehawq.db
 
+⚡ Quick Start
+
 const Database = require("sehawq.db");
 const db = new Database("mydb.json");
 
