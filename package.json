@@ -1,0 +1,15 @@
+{
+  "name": "sehawq.db",
+  "version": "2.1.0",
+  "description": "Lightweight JSON-based key-value database with namespaces, array & math helpers.",
+  "main": "src/index.js",
+  "keywords": [
+    "database",
+    "json",
+    "key-value",
+    "quick.db",
+    "lightweight"
+  ],
+  "author": "Omer (sehawq)",
+  "license": "MIT"
+}
