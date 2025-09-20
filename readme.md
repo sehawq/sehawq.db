@@ -1,7 +1,7 @@
 # sehawq.db  
 
 [![npm version](https://img.shields.io/npm/v/sehawq.db.svg)](https://www.npmjs.com/package/sehawq.db)  
-[![npm downloads](https://img.shields.io/npm/dt/sehawq.db.svg)](https://www.npmjs.com/package/sehawq.db)  
+[![npm downloads](https://img.shields.io/npm/dt/sehawq.db)](https://www.npmjs.com/package/sehawq.db)  
 [![license](https://img.shields.io/github/license/sehawq/sehawq.db.svg)](LICENSE)  
 
 📦 **NPM Package:** [https://www.npmjs.com/package/sehawq.db](https://www.npmjs.com/package/sehawq.db)  
