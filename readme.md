@@ -237,7 +237,7 @@ await db.restore('./backup.json');
 
 ## 📝 Changelog
 
-### Changes in 2.0.0 🔥
+### Changes in 2.4.0 🔥
 
 - ✨ **Added Query System**
   - `find(filter)` — Filter entries with custom functions
@@ -279,7 +279,7 @@ await db.restore('./backup.json');
     .count();
   ```
 
-### Changes in 1.x
+### Changes in 2.4.0x
 
 - ✨ Initial release with core features
 - 🔧 Basic CRUD operations (`set`, `get`, `delete`, `has`)
@@ -295,7 +295,7 @@ await db.restore('./backup.json');
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](https://github.com/sehawq/sehawq.db/blob/main/LICENSE) file for details.
 
 ## 🤝 Contributing
 
