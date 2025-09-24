@@ -237,7 +237,7 @@ await db.restore('./backup.json');
 
 ## 📝 Changelog
 
-### Changes in 2.4.0 🔥
+### Changes in 2.4.2 🔥
 
 - ✨ **Added Query System**
   - `find(filter)` — Filter entries with custom functions
@@ -279,7 +279,7 @@ await db.restore('./backup.json');
     .count();
   ```
 
-### Changes in 2.4.0x
+### Changes in 2.4.2x
 
 - ✨ Initial release with core features
 - 🔧 Basic CRUD operations (`set`, `get`, `delete`, `has`)
