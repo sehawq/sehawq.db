@@ -1,6 +1,6 @@
 {
   "name": "sehawq.db",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Lightweight JSON-based key-value database with namespaces, array & math helpers.",
   "main": "src/index.js",
   "keywords": [
