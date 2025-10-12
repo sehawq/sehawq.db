@@ -1,20 +1,36 @@
 {
   "name": "sehawq.db",
   "version": "3.0.0",
-  "description": "Lightweight JSON-based key-value database with namespaces, array & math helpers.",
+  "description": "Lightweight JSON-based database with REST API and real-time sync",
   "main": "src/index.js",
   "keywords": [
     "database",
     "json",
-    "key-value",
-    "quick.db",
-    "lightweight"
+    "rest-api",
+    "realtime",
+    "firebase-alternative",
+    "nodejs",
+    "embedded-database"
   ],
-  "author": "Omer (sehawq)",
+  "author": "Sehawq",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sehawq/sehawq.db"
+  },
+  "scripts": {
+    "start": "node examples/server.js",
+    "dev": "node --inspect examples/server.js",
+    "test": "node tests/run.js",
+    "benchmark": "node utils/benchmark.js",
+    "test:comprehensive": "node test-files/comprehensive-test-v2.js"
+  },
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^5.1.0",
-    "socket.io": "^4.8.1"
+    "express": "^4.18.0",
+    "socket.io": "^4.6.0",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }

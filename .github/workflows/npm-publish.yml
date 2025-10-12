@@ -5,7 +5,7 @@ on:
     branches:
       - main
     tags:
-      - 'v*' # Sadece versiyon tag'lerinde çalışır (örn: v2.1.0)
+  - 'v*' # Only runs on version tags (e.g.: v2.1.0)
 
 jobs:
   publish:
