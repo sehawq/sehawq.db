@@ -1,6 +1,6 @@
 {
   "name": "sehawq.db",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "Lightweight JSON-based database with REST API and real-time sync",
   "main": "src/index.js",
   "keywords": [
