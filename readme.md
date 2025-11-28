@@ -1,4 +1,4 @@
-# SehawqDB 4.0.0 - Complete Documentation for AI Handoff
+# SehawqDB 4.0.0
 
 ## 🎯 Project Overview
 
