@@ -209,7 +209,7 @@ min(field, filterFn = null) {
   return min !== Infinity ? min : null;
 }
 
-max(field, filterFn = null) {
+max(field, filterFn = null) { 
   const results = filterFn ? this.find(filterFn) : this.findAll();
   const resultsArray = results.toArray();
   let max = -Infinity;

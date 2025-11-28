@@ -1,36 +1,16 @@
 {
-  "test": "working!",
-  "user:1": {
-    "id": 1,
-    "name": "Ali",
-    "age": 25,
-  "city": "Istanbul",
-    "active": true,
-    "score": 85
-  },
-  "user:2": {
-    "id": 2,
-  "name": "Ayse",
-    "age": 30,
-    "city": "Ankara",
-    "active": false,
-    "score": 92
-  },
-  "user:3": {
-    "id": 3,
-    "name": "Mehmet",
-    "age": 35,
-     "city": "Istanbul",
-    "active": true,
-    "score": 78
-  },
-  "cache-test": {
-    "data": "cache deneme"
-  },
   "event-test": {
     "triggered": true
   },
   "messages": [
+    {
+      "id": 1,
+      "text": "Hello"
+    },
+    {
+      "id": 2,
+      "text": "World"
+    },
     {
       "id": 1,
       "text": "Hello"
@@ -58,33 +38,68 @@
     "price": 20,
     "category": "education"
   },
-  "server-test": {
-    "message": "API testi",
-    "timestamp": 1760269075339
-  },
   "user.profile.address.city": "Istanbul",
   "todos": [
     {
       "id": 1,
-       "text": "Learn SehawqDB",
+      "text": "Learn SehawqDB",
       "done": true
     },
     {
       "id": 2,
-      "text": "Proje yap",
+      "text": "Do project",
       "done": false
     },
     {
       "id": 3,
-       "text": "Change the world",
+      "text": "Change the world",
+      "done": false
+    },
+    {
+      "id": 1,
+      "text": "Learn SehawqDB",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "Do project",
+      "done": false
+    },
+    {
+      "id": 3,
+      "text": "Change the world",
       "done": false
     }
   ],
+  "user:1": {
+    "id": 1,
+    "name": "Ali",
+    "age": 25,
+    "city": "Istanbul",
+    "active": true,
+    "score": 85
+  },
+  "user:2": {
+    "id": 2,
+    "name": "Ayse",
+    "age": 30,
+    "city": "Ankara",
+    "active": false,
+    "score": 92
+  },
+  "user:3": {
+    "id": 3,
+    "name": "Mehmet",
+    "age": 35,
+    "city": "Istanbul",
+    "active": true,
+    "score": 78
+  },
   "user:4": {
     "id": 4,
     "name": "Zeynep",
     "age": 28,
-  "city": "Izmir",
+    "city": "Izmir",
     "active": true,
     "score": 88
   },
@@ -92,7 +107,7 @@
     "id": 5,
     "name": "Can",
     "age": 22,
-  "city": "Istanbul",
+    "city": "Istanbul",
     "active": false,
     "score": 95
   },
@@ -103,7 +118,10 @@
     "triggered": false
   },
   "api:test": {
-    "message": "REST API test verisi",
-    "timestamp": 1760269726995
+    "message": "REST API test data",
+    "timestamp": 1760732611552
+  },
+  "cache-test": {
+    "data": "cache test"
   }
 }

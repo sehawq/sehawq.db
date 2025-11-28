@@ -14,7 +14,7 @@
 
 ---
 
-## 🚀 What's New in 4.0.0 (Major Rewrite)
+## 🚀 What's New in 4.0.0
 
 ### **Complete Architecture Overhaul**
 
@@ -116,6 +116,40 @@ db.groupBy('category')
 
 ## 🛠 Installation & Usage
 
+### Quick Start (copy & paste)
+
+Follow these three steps to try SehawqDB in under a minute.
+
+1) Install
+
+```bash
+npm install sehawq.db
+```
+
+2) Create a tiny script `example.js` and run it
+
+```javascript
+// example.js
+const { SehawqDB } = require('sehawq.db');
+const db = new SehawqDB();
+
+db.set('hello', 'world');
+console.log(db.get('hello')); // -> 'world'
+
+// Stop gracefully if you started servers in options
+db.stop?.();
+```
+
+```bash
+node example.js
+```
+
+3) Run the built-in comprehensive smoke test (quick check)
+
+```bash
+npm run test:comprehensive
+```
+
 ### **Basic Setup**
 
 ```bash
@@ -144,6 +178,17 @@ const db = new SehawqDB({
   }
 });
 ```
+
+### Run tests
+
+There is a comprehensive test script included. Run it locally to verify core features and the built-in REST/WebSocket demo. The project `package.json` currently keeps version `3.0.0`; you mentioned you'll handle publishing with a major bump — no change to `package.json` is made here.
+
+```bash
+# Runs the comprehensive v2 test which also starts the local test API (port 3001 by default)
+npm run test:comprehensive
+```
+
+Expected output: the test suite prints sections like "BASIC CRUD OPERATIONS", "QUERY SYSTEM", and ends with "ALL TESTS COMPLETED!" and "Database stopped". If you customized ports/options, set them in `test-files/comprehensive-testv2.js` or run the test script directly.
 
 ---
 
@@ -246,6 +291,57 @@ db.getStats(); // Detailed performance metrics
 * Connection heartbeat and timeout management
 
 ---
+
+## ⚙️ Constructor options (quick reference)
+
+Below is a compact table of common options you can pass to `new SehawqDB(options)`. For exact behavior check the implementation files under `src/` (e.g. `src/core/*`, `src/server/*`, `src/performance/*`).
+
+| Option | Type | Default | Description |
+|---|---:|---:|---|
+| `enableServer` | boolean | `false` | Enable the built-in REST API (starts `api.js`).
+| `serverPort` | number | `3000` | Port used by REST API and WebSocket.
+| `enableRealtime` | boolean | `false` | Turn on WebSocket realtime support.
+| `debug` | boolean | `false` | Enable verbose debug logging.
+| `performance` | object | `{}` | Performance related sub-options (e.g. `lazyLoading`, `maxMemoryMB`, `backgroundIndexing`).
+| `performance.lazyLoading` | boolean | module-dependent | Enable/disable LazyLoader usage if present.
+| `performance.maxMemoryMB` | number | `100` | Target memory cap for MemoryManager (MB).
+| `indexing` | object | `{}` | Options passed to IndexManager (e.g. backgroundIndexing).
+
+Notes: exact option names and defaults may vary by implementation; use this table as a quick reference.
+
+## 📚 API Reference (short)
+
+Quick reference for common methods on the `SehawqDB` instance. See source files for full details and edge cases.
+
+| Method | Sync / Async | Description | Returns |
+|---|---:|---|---|
+| `new SehawqDB(options)` | sync | Create a DB instance (components not started). | `SehawqDB` instance |
+| `db.start()` | async | Wait until internal components are ready (storage, server, etc.). | `Promise<SehawqDB>` |
+| `db.stop()` | async | Stop DB and servers cleanly. | `Promise<void>` |
+| `db.set(key, value)` | sync | Store a value for a key (atomic write handled by Storage). | `void` |
+| `db.get(key)` | sync | Retrieve value by key. | `any \/ undefined` |
+| `db.delete(key)` | sync | Delete a key. | `boolean` (true if deleted) |
+| `db.has(key)` | sync | Check existence of a key. | `boolean` |
+| `db.all()` | sync | Return all records as an object. | `Object` |
+| `db.clear()` | sync | Clear all records. | `void` |
+| `db.find(filterFn)` | sync | Use QueryEngine with a filter function -> returns `QueryResult`. | `QueryResult` |
+| `db.where(field, op, value)` | sync | Field-based query (operators like `=`, `>`, `in`). | `QueryResult` |
+| `db.count([filterFn])` | sync | Count records (optional filter). | `number` |
+| `db.sum(field, [filterFn])`, `db.avg()`, `db.min()`, `db.max()` | sync | Aggregation functions. | `number` |
+| `db.createIndex(field, type)` | async | Create an index (hash, range, text). `await` is recommended. | `Promise<boolean>` |
+| `db.dropIndex(field)` | async | Drop an index. | `Promise<boolean>` |
+| `db.getIndexes()` | sync | Get index info. | `Object` |
+| `db.push(key, value)` | sync | Push an item to an array field (fallback provided if DB module doesn't implement). | new length or array |
+| `db.pull(key, value)` | sync | Remove an item from an array field. | `boolean` |
+| `db.add(key, number)`, `db.subtract(key, number)` | sync | Numeric add/subtract ops. | new number |
+| `db.backup([path])` | async | Create a backup; returns backup file path. | `Promise<string>` |
+| `db.restore(path)` | async | Restore from backup file. | `Promise<boolean>` |
+| `db.getStats()` | sync | Return DB/query/index stats. | `Object` |
+
+Notes:
+- Some methods may be asynchronous depending on the underlying implementation (e.g. IndexManager). Using `await` for `createIndex` is a safe practice.
+- `QueryResult` supports chaining methods like `.sort()`, `.limit()`, `.values()`, and `.toArray()`; check `src/core/QueryEngine.js` for details.
+
 
 ## 🐛 Known Limitations
 

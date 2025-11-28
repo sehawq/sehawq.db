@@ -103,7 +103,7 @@ class SehawqDB {
     await this.database.close();
   }
 
-  // 🔥 STATS Methods
+  // 🔥 STATS Methods 
   getStats() {
     return {
       database: this.database.getStats?.(),

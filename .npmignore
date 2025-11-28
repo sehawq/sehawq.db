@@ -1,0 +1,7 @@
+test-files/
+comprehensive-backup.json
+comprehensive-backup.json.backup_*
+sehawq-data.json
+package-lock.json
+*.log
+node_modules/
