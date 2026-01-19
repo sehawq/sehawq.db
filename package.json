@@ -15,9 +15,8 @@
   "author": "Sehawq",
   "license": "MIT",
   "repository": {
-  "type": "git",
-  "url": "git+https://github.com/sehawq/sehawq.db.git"
-}
+    "type": "git",
+    "url": "git+https://github.com/sehawq/sehawq.db.git"
   },
   "scripts": {
     "start": "node examples/server.js",
@@ -34,4 +33,4 @@
   "engines": {
     "node": ">=14.0.0"
   }
-
+}
