@@ -1,4 +1,4 @@
-# SehawqDB 4.0.0
+# SehawqDB 4.0.5
 
 ## 🎯 Project Overview
 
@@ -8,13 +8,13 @@
 
 **Status:** Live on npm, actively maintained
 
-**Current Version:** 4.0.0 - Complete Rewrite
+**Current Version:** 4.0.5 - Complete Rewrite
 
 **Mission:** Build a database that's easier than MongoDB, more powerful than and cheaper than Firebase.
 
 ---
 
-## 🚀 What's New in 4.0.0
+## 🚀 What's New in 4.0.5
 
 ### **Complete Architecture Overhaul**
 
@@ -400,7 +400,7 @@ Notes:
 
 ## ✅ Conclusion
 
-**SehawqDB 4.0.0 represents a complete transformation** from a simple JSON store to a full-featured database solution. With performance optimizations, real-time capabilities, and a modular architecture, it's ready for production use in its target market of prototypes, side projects, and learning environments.
+**SehawqDB 4.0.5 represents a complete transformation** from a simple JSON store to a full-featured database solution. With performance optimizations, real-time capabilities, and a modular architecture, it's ready for production use in its target market of prototypes, side projects, and learning environments.
 
 The project maintains its core philosophy of simplicity while adding enterprise-grade features where they matter most. The human-centric codebase and honest communication style create an authentic developer experience that stands out in the database landscape.
 
@@ -408,6 +408,6 @@ The project maintains its core philosophy of simplicity while adding enterprise-
 
 ---
 
-*Documentation version: 4.0.0*
+*Documentation version: 4.0.5*
 *Last updated: Current date*
 *Status: Production Ready*
