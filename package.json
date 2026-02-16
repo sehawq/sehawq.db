@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node start.js",
-    "test": "node test-files/full-system-test.js"
+    "test": "node tests/full-system-test.js"
   },
   "keywords": [
     "database",

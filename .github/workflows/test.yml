@@ -22,7 +22,7 @@ jobs:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
     - run: npm ci
-    - run: node test-files/tier1-test.js
-    - run: node test-files/tier2-test.js
-    - run: node test-files/tier3-test.js
-    - run: node test-files/tier4-test.js
+    - run: node tests/tier1-test.js
+    - run: node tests/tier2-test.js
+    - run: node tests/tier3-test.js
+    - run: node tests/tier4-test.js
