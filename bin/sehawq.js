@@ -36,15 +36,15 @@ ${c.bold}SehawqDB CLI${c.r} ${c.d}v5.0${c.r}
 ${c.b}Usage:${c.r}  sehawq <command> [options]
 
 ${c.b}Commands:${c.r}
-  init              Yeni proje oluştur (start.js + config)
-  start             Sunucuyu başlat
-  dashboard         Dashboard'u tarayıcıda aç
-  export [--csv]    Veriyi JSON/CSV olarak dışa aktar
-  import <dosya>    JSON dosyasından veri yükle
-  migrate           Bekleyen migration'ları çalıştır
-  status            DB istatistiklerini göster
+  init              Create new project (start.js + config)
+  start             Start server
+  dashboard         Open Dashboard in browser
+  export [--csv]    Export data as JSON/CSV
+  import <file>     Import data from JSON file
+  migrate           Run pending migrations
+  status            Show DB stats
 
-${c.b}Örnekler:${c.r}
+${c.b}Examples:${c.r}
   ${c.d}$ sehawq init${c.r}
   ${c.d}$ sehawq start${c.r}
   ${c.d}$ sehawq export > backup.json${c.r}
@@ -53,7 +53,7 @@ ${c.b}Örnekler:${c.r}
 }
 
 function cmdInit() {
-    // starter dosyaları oluştur
+    // create starter files
     const startFile = `const SehawqDB = require('sehawq.db');
 
 const db = new SehawqDB({
@@ -64,7 +64,7 @@ const db = new SehawqDB({
   debug: true
 });
 
-// auth plugin (opsiyonel)
+// auth plugin (optional)
 const auth = require('sehawq.db/src/plugins/auth');
 db.use(auth, {
   secret: 'change-this-secret',
@@ -72,41 +72,41 @@ db.use(auth, {
 });
 
 db.start().then(() => {
-  console.log('SehawqDB hazır!');
+  console.log('SehawqDB Ready!');
   console.log('Dashboard: http://localhost:3000/dashboard');
 });
 `;
 
     if (fs.existsSync('start.js')) {
-        warn('start.js zaten var, üstüne yazmıyorum');
+        warn('start.js already exists, skipping overwrite');
     } else {
         fs.writeFileSync('start.js', startFile);
-        ok('start.js oluşturuldu');
+        ok('start.js created');
     }
 
-    // data klasörü
+    // data folder
     if (!fs.existsSync('data')) {
         fs.mkdirSync('data', { recursive: true });
-        ok('data/ klasörü oluşturuldu');
+        ok('data/ folder created');
     }
 
-    info('Başlamak için: node start.js');
+    info('To start: node start.js');
 }
 
 function cmdStart() {
-    // start.js varsa onu çalıştır
+    // execute start.js if exists
     const entry = fs.existsSync('start.js') ? 'start.js' : null;
     if (!entry) {
-        warn('start.js bulunamadı. Önce "sehawq init" çalıştır.');
+        warn('start.js not found. Run "sehawq init" first.');
         process.exit(1);
     }
 
-    info('Sunucu başlatılıyor...');
+    info('Starting server...');
     try {
         // inherit stdio so user sees the output
         require('child_process').spawn('node', [entry], { stdio: 'inherit' });
     } catch (e) {
-        warn('başlatma hatası: ' + e.message);
+        warn('startup error: ' + e.message);
     }
 }
 
@@ -114,7 +114,7 @@ function cmdDashboard() {
     const port = args[1] || 3000;
     const url = `http://localhost:${port}/dashboard`;
 
-    info(`Dashboard açılıyor: ${url}`);
+    info(`Opening Dashboard: ${url}`);
 
     // platform-specific open command
     const plat = process.platform;
@@ -123,7 +123,7 @@ function cmdDashboard() {
         else if (plat === 'darwin') execSync(`open ${url}`);
         else execSync(`xdg-open ${url}`);
     } catch {
-        warn(`Tarayıcı açılamadı, elle aç: ${url}`);
+        warn(`Could not open browser, open manually: ${url}`);
     }
 }
 
@@ -134,7 +134,7 @@ function cmdExport() {
     // fetch data from running server
     httpGet(`http://localhost:${port}/api/data`, (err, body) => {
         if (err) {
-            warn('sunucuya bağlanılamadı. Sunucu çalışıyor mu?');
+            warn('Could not connect to server. Is it running?');
             process.exit(1);
         }
 
@@ -143,7 +143,7 @@ function cmdExport() {
             const data = resp.data || {};
 
             if (asCSV) {
-                // basit csv dönüşümü
+                // simple csv conversion
                 const keys = Object.keys(data);
                 log('key,value');
                 for (const k of keys) {
@@ -154,7 +154,7 @@ function cmdExport() {
                 log(JSON.stringify(data, null, 2));
             }
         } catch (e) {
-            warn('parse hatası: ' + e.message);
+            warn('parse error: ' + e.message);
         }
     });
 }
@@ -162,12 +162,12 @@ function cmdExport() {
 function cmdImport() {
     const file = args[1];
     if (!file) {
-        warn('dosya belirt: sehawq import data.json');
+        warn('specify file: sehawq import data.json');
         process.exit(1);
     }
 
     if (!fs.existsSync(file)) {
-        warn(`dosya bulunamadı: ${file}`);
+        warn(`file not found: ${file}`);
         process.exit(1);
     }
 
@@ -176,7 +176,7 @@ function cmdImport() {
     try {
         data = JSON.parse(raw);
     } catch {
-        warn('geçersiz JSON dosyası');
+        warn('invalid JSON file');
         process.exit(1);
     }
 
@@ -200,15 +200,15 @@ function cmdImport() {
         res.on('end', () => {
             try {
                 const r = JSON.parse(d);
-                if (r.success) ok(`${r.imported} kayıt yüklendi`);
-                else warn('import hatası: ' + (r.error || 'bilinmeyen'));
+                if (r.success) ok(`${r.imported} records imported`);
+                else warn('import error: ' + (r.error || 'unknown'));
             } catch {
-                warn('beklenmeyen yanıt');
+                warn('unexpected response');
             }
         });
     });
 
-    req.on('error', () => warn('sunucuya bağlanılamadı'));
+    req.on('error', () => warn('could not connect to server'));
     req.write(body);
     req.end();
 }
@@ -216,11 +216,11 @@ function cmdImport() {
 function cmdMigrate() {
     const entry = fs.existsSync('start.js') ? 'start.js' : null;
     if (!entry) {
-        warn('start.js bulunamadı');
+        warn('start.js not found');
         process.exit(1);
     }
 
-    info('Migration çalıştırılıyor...');
+    info('Running migrations...');
     // we need to load the db and run migrations
     // kinda hacky but it works
     try {
@@ -229,19 +229,19 @@ function cmdMigrate() {
         db.start().then(() => {
             const status = db.migrationStatus();
             if (status.pending === 0) {
-                ok('bekleyen migration yok');
+                ok('no pending migrations');
             } else {
-                info(`${status.pending} migration bekliyor...`);
+                info(`${status.pending} migrations pending...`);
                 db.runMigrations().then(n => {
-                    ok(`${n} migration uygulandı`);
+                    ok(`${n} migrations applied`);
                     db.stop();
                 });
             }
         });
     } catch (e) {
-        warn('migration hatası: ' + e.message);
+        warn('migration error: ' + e.message);
         // try via API if server running
-        info('sunucu üzerinden deneniyor...');
+        info('trying via API...');
     }
 }
 
@@ -250,23 +250,23 @@ function cmdStatus() {
 
     httpGet(`http://localhost:${port}/api/stats`, (err, body) => {
         if (err) {
-            warn('sunucuya bağlanılamadı');
+            warn('could not connect to server');
             process.exit(1);
         }
 
         try {
             const stats = JSON.parse(body);
             log('');
-            log(`${c.bold}SehawqDB Durumu${c.r}`);
+            log(`${c.bold}SehawqDB Status${c.r}`);
             log(`${c.d}─────────────────────${c.r}`);
 
             if (stats.database) {
                 const db = stats.database;
-                log(`  Kayıt sayısı:  ${c.g}${db.size}${c.r}`);
-                log(`  Okuma:         ${db.reads}`);
-                log(`  Yazma:         ${db.writes}`);
+                log(`  Records:       ${c.g}${db.size}${c.r}`);
+                log(`  Reads:         ${db.reads}`);
+                log(`  Writes:        ${db.writes}`);
                 log(`  Cache hit:     ${db.rate}`);
-                log(`  TTL anahtarı:  ${db.ttlKeys}`);
+                log(`  TTL keys:      ${db.ttlKeys}`);
             }
 
             if (stats.server) {
@@ -274,12 +274,12 @@ function cmdStatus() {
                 const uptime = Math.floor(s.uptime);
                 const mins = Math.floor(uptime / 60);
                 const secs = uptime % 60;
-                log(`  Uptime:        ${mins}dk ${secs}sn`);
+                log(`  Uptime:        ${mins}m ${secs}s`);
             }
 
             log('');
         } catch {
-            warn('yanıt parse edilemedi');
+            warn('could not parse response');
         }
     });
 }
@@ -306,6 +306,6 @@ switch (cmd) {
     case '--help': case '-h': case undefined:
         showHelp(); break;
     default:
-        warn(`bilinmeyen komut: ${cmd}`);
+        warn(`unknown command: ${cmd}`);
         showHelp();
 }
