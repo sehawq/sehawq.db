@@ -159,9 +159,10 @@ class SehawqDB {
 
   // Backup utils
   async backup(dest) {
-    // TODO: Implement proper backup to external path
-    console.warn('Backup not fully implemented yet');
+    throw new Error('Please use the CLI tool for backups: npx sehawq backup');
   }
 }
 
 module.exports = SehawqDB;
+module.exports.SehawqDB = SehawqDB; // Allow destructuring: const { SehawqDB } = require('sehawq.db')
+module.exports.default = SehawqDB; // ESM support

@@ -39,12 +39,16 @@ npm install sehawq.db
 const { SehawqDB } = require('sehawq.db');
 const db = new SehawqDB();
 
-// It's just a key-value store...
-db.set('config', { theme: 'dark', version: '1.0' });
-console.log(db.get('config').theme); // -> 'dark'
+(async () => {
+  await db.start(); // Required to load data
 
-// ...but with superpowers
-db.set('session', 'secret-token', { ttl: 3600 }); // Auto-deletes in 1 hour
+  // It's just a key-value store...
+  await db.set('config', { theme: 'dark', version: '1.0' });
+  console.log(db.get('config').theme); // -> 'dark'
+
+  // ...but with superpowers
+  await db.set('session', 'secret-token', { ttl: 3600 }); // Auto-deletes in 1 hour
+})();
 ```
 
 ### 2. Using Collections (MongoDB Style)
@@ -55,13 +59,17 @@ Need structured data? Use collections. We handle IDs for you.
   Data is stored as:
   users::a1b2c3 -> { name: 'Ali', role: 'admin' }
 */
+*/
 const users = db.collection('users');
 
-await users.insert({ name: 'Ali', role: 'admin' });
-await users.insert({ name: 'Veli', role: 'user' });
+(async () => {
+    await db.start();
+    await users.insert({ name: 'Ali', role: 'admin' });
+    await users.insert({ name: 'Veli', role: 'user' });
 
-// Find capabilities
-const admins = users.find({ role: 'admin' });
+    // Find capabilities
+    const admins = users.find({ role: 'admin' });
+})();
 ```
 
 ### 3. Realtime Dashboard
