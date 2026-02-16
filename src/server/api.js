@@ -47,7 +47,7 @@ class APIServer {
     });
 
     // Redirect root to dashboard
-    this.app.get('/', (req, res) => res.json({ status: 'ok', version: '5.0.3', dashboard: '/dashboard' }));
+    this.app.get('/', (req, res) => res.json({ status: 'ok', version: '5.0.4', dashboard: '/dashboard' }));
 
     // --- AUTH ROUTES ---
     this.app.post('/api/login', (req, res) => {
