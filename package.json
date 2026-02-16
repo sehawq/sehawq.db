@@ -1,6 +1,6 @@
 {
   "name": "sehawq.db",
-  "version": "5.0.1",
+  "version": "5.0.2",
   "description": "Lightweight JSON-based database with REST API, realtime sync, and GDPR compliance",
   "main": "src/index.js",
   "bin": {
