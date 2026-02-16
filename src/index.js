@@ -165,3 +165,5 @@ class SehawqDB {
 }
 
 module.exports = SehawqDB;
+module.exports.SehawqDB = SehawqDB; // Allow destructuring: const { SehawqDB } = require('sehawq.db')
+module.exports.default = SehawqDB; // ESM support
