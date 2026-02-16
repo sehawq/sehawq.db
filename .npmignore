@@ -1,7 +1,11 @@
-test-files/
-comprehensive-backup.json
-comprehensive-backup.json.backup_*
-sehawq-data.json
-package-lock.json
-*.log
+# NPM Ignore
 node_modules/
+test-files/
+test-data/
+.gemini/
+.git/
+.gitignore
+task.md
+start.js
+examples/
+*.log

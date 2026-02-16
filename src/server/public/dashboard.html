@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SehawqDB Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #020617;
+            /* slate-950 */
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        [x-cloak] {
+            display: none !important;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            850: '#151e32',
+                            950: '#020617',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body class="bg-slate-950 text-slate-200 selection:bg-emerald-500/30 min-h-screen" x-data="dashboard()">
+
+    <!-- Login Modal -->
+    <div x-show="!token"
+        class="fixed inset-0 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center z-50 transition-opacity"
+        x-transition.opacity x-cloak>
+        <div
+            class="bg-slate-900 border border-slate-800 p-8 rounded-2xl w-96 shadow-2xl relative overflow-hidden ring-1 ring-white/10">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-cyan-500"></div>
+            <div class="mb-8 text-center">
+                <div
+                    class="w-16 h-16 bg-emerald-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 ring-1 ring-emerald-500/20">
+                    <span class="text-3xl">🦅</span>
+                </div>
+                <h2 class="text-2xl font-bold text-white tracking-tight">SehawqDB</h2>
+                <p class="text-slate-500 text-sm mt-1">Authenticate to access core</p>
+            </div>
+
+            <form @submit.prevent="login">
+                <div class="space-y-4">
+                    <div>
+                        <label
+                            class="block text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Username</label>
+                        <input type="text" x-model="username"
+                            class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all placeholder:text-slate-700"
+                            placeholder="admin">
+                    </div>
+                    <div>
+                        <label
+                            class="block text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Password</label>
+                        <input type="password" x-model="password"
+                            class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all placeholder:text-slate-700"
+                            placeholder="••••••••">
+                    </div>
+                </div>
+
+                <div x-show="loginError"
+                    class="mt-4 text-red-400 text-xs text-center font-medium bg-red-950/50 py-2.5 rounded border border-red-900/50"
+                    x-text="loginError" x-transition></div>
+
+                <button type="submit"
+                    class="w-full mt-6 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition-all shadow-lg shadow-emerald-900/20 active:scale-[0.98]">
+                    Authenticate
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Authenticated Content -->
+    <!-- Custom Confirmation Modal -->
+    <!-- Custom Confirmation Modal -->
+    <div x-show="showModal" class="fixed inset-0 z-[100] flex items-center justify-center" style="z-index: 100;"
+        x-cloak>
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" x-show="showModal"
+            x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-200"
+            x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"></div>
+
+        <!-- Modal Card -->
+        <div class="relative bg-slate-900 border border-slate-800 rounded-2xl p-6 w-96 shadow-2xl ring-1 ring-white/10"
+            x-show="showModal" @click.away="closeModal()" x-transition:enter="transition ease-out duration-500"
+            x-transition:enter-start="opacity-0 transform scale-90 translate-y-4"
+            x-transition:enter-end="opacity-100 transform scale-100 translate-y-0"
+            x-transition:leave="transition ease-in duration-300"
+            x-transition:leave-start="opacity-100 transform scale-100 translate-y-0"
+            x-transition:leave-end="opacity-0 transform scale-90 translate-y-4">
+
+            <div class="mb-4">
+                <div
+                    class="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-4 mx-auto shadow-lg shadow-red-500/20 ring-1 ring-red-500/20">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-red-500" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path
+                            d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                </div>
+                <h3 class="text-xl font-bold text-white text-center tracking-tight" x-text="modalTitle"></h3>
+                <p class="text-slate-400 text-sm text-center mt-2 leading-relaxed" x-text="modalMessage"></p>
+            </div>
+
+            <div class="flex gap-3 mt-8">
+                <button @click="closeModal()"
+                    class="flex-1 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-bold transition-all hover:text-white border border-slate-700 hover:border-slate-600">
+                    Cancel
+                </button>
+                <button @click="executeAction()"
+                    class="flex-1 px-4 py-2.5 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-red-900/40 hover:shadow-red-900/60 hover:-translate-y-0.5">
+                    Confirm
+                </button>
+            </div>
+        </div>
+    </div>
+    <div x-show="token" x-transition.opacity.duration.500ms class="max-w-[1600px] mx-auto p-4 lg:p-8" x-cloak>
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+            <div class="flex items-center gap-5">
+                <div
+                    class="bg-gradient-to-br from-emerald-500 to-cyan-600 w-12 h-12 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/10 ring-1 ring-white/10">
+                    <span class="text-white font-bold text-2xl">S</span>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold text-white tracking-tight leading-none">SehawqDB</h1>
+                    <div class="flex items-center gap-2 mt-1.5">
+                        <span
+                            class="text-[10px] font-mono text-emerald-400 bg-emerald-950/50 border border-emerald-900/50 px-1.5 py-0.5 rounded tracking-wide">v5.0-ALPHA</span>
+                        <div class="w-1 h-1 bg-slate-700 rounded-full"></div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="relative flex h-2 w-2">
+                                <span
+                                    class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"
+                                    x-show="connected"></span>
+                                <span class="relative inline-flex rounded-full h-2 w-2"
+                                    :class="connected ? 'bg-emerald-500' : 'bg-red-500'"></span>
+                            </span>
+                            <span class="text-[10px] text-slate-400 uppercase tracking-widest font-bold"
+                                x-text="connected ? 'ONLINE' : 'OFFLINE'"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3 bg-slate-900/50 p-1.5 rounded-xl border border-slate-800/50">
+                <button @click="downloadBackup()" x-show="user?.role === 'admin'"
+                    class="group flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-lg transition-all hover:text-white hover:border-slate-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-blue-500 group-hover:text-blue-400"
+                        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    <span class="text-sm font-medium">Backup</span>
+                </button>
+
+                <div class="h-6 w-px bg-slate-800 mx-1"></div>
+
+                <div class="flex items-center gap-3 pl-2 pr-1">
+                    <div class="text-right hidden sm:block">
+                        <div class="text-sm font-bold text-white" x-text="user?.username">admin</div>
+                        <div class="text-[10px] text-slate-500 uppercase tracking-wider font-bold" x-text="user?.role">
+                            ADMIN</div>
+                    </div>
+                    <button @click="logout"
+                        class="bg-slate-800 hover:bg-red-950/30 hover:border-red-900/30 border border-slate-700 text-slate-400 hover:text-red-400 p-2.5 rounded-lg transition-all"
+                        title="Logout">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                            <polyline points="16 17 21 12 16 7" />
+                            <line x1="21" y1="12" x2="9" y2="12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <template x-for="(stat, index) in [
+                { label: 'Total Records', value: stats.database?.size || 0, color: 'text-white', icon: 'db' },
+                { label: 'Reads / Writes', value: (stats.database?.reads || 0) + ' / ' + (stats.database?.writes || 0), color: 'text-white', icon: 'io' },
+                { label: 'Cache Hit Rate', value: stats.database?.rate || '0%', color: 'text-emerald-400', icon: 'zap' },
+                { label: 'Uptime', value: uptimeString, color: 'text-blue-400', icon: 'clock' }
+            ]">
+                <div
+                    class="glass-panel p-5 rounded-2xl hover:bg-slate-900/80 transition-all group border border-slate-800">
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="text-slate-500 text-[11px] font-bold uppercase tracking-widest group-hover:text-emerald-500/70 transition-colors"
+                            x-text="stat.label"></div>
+                    </div>
+                    <div class="text-2xl font-mono font-bold tracking-tight" :class="stat.color" x-text="stat.value">
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- Live Activity Chart -->
+        <div class="glass-panel rounded-2xl p-5 mb-8 border border-slate-800">
+            <div class="flex justify-between items-center mb-3">
+                <div class="text-slate-500 text-[10px] font-bold uppercase tracking-widest">I/O Activity</div>
+                <div class="flex gap-4 text-[10px]">
+                    <div class="flex items-center gap-1.5"><span
+                            class="w-2 h-2 rounded-full bg-emerald-500"></span><span class="text-slate-500">Reads</span>
+                    </div>
+                    <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-500"></span><span
+                            class="text-slate-500">Writes</span></div>
+                </div>
+            </div>
+            <canvas id="ioChart" height="80" class="w-full rounded-lg" style="max-height:80px"></canvas>
+        </div>
+        <!-- Main Interface -->
+        <div
+            class="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl shadow-black/40 flex flex-col lg:flex-row h-[750px]">
+
+            <!-- Sidebar -->
+            <div
+                class="w-full lg:w-72 bg-slate-950/50 border-b lg:border-b-0 lg:border-r border-slate-800 flex flex-col">
+                <div class="p-4 flex flex-col gap-1">
+                    <div class="text-slate-500 text-[10px] font-bold uppercase tracking-widest px-3 py-2 mb-1">
+                        Navigation</div>
+
+                    <button @click="tab = 'data'"
+                        class="w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-all flex items-center gap-3 group relative overflow-hidden"
+                        :class="tab === 'data' ? 'bg-emerald-900/20 text-emerald-400 ring-1 ring-emerald-500/20' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'">
+                        <div class="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent opacity-0 transition-opacity"
+                            :class="tab === 'data' ? 'opacity-100' : 'group-hover:opacity-50'"></div>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 relative z-10" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <ellipse cx="12" cy="5" rx="9" ry="3" />
+                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+                        </svg>
+                        <span class="relative z-10">Data Explorer</span>
+                    </button>
+
+                    <button @click="tab = 'users'; fetchUsers()" x-show="user?.role === 'admin'"
+                        class="w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-all flex items-center gap-3 group relative overflow-hidden"
+                        :class="tab === 'users' ? 'bg-emerald-900/20 text-emerald-400 ring-1 ring-emerald-500/20' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'">
+                        <div class="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent opacity-0 transition-opacity"
+                            :class="tab === 'users' ? 'opacity-100' : 'group-hover:opacity-50'"></div>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 relative z-10" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                        </svg>
+                        <span class="relative z-10">User Management</span>
+                    </button>
+
+                    <button @click="tab = 'collections'; fetchCollections()"
+                        class="w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-all flex items-center gap-3 group relative overflow-hidden"
+                        :class="tab === 'collections' ? 'bg-emerald-900/20 text-emerald-400 ring-1 ring-emerald-500/20' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'">
+                        <div class="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent opacity-0 transition-opacity"
+                            :class="tab === 'collections' ? 'opacity-100' : 'group-hover:opacity-50'"></div>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 relative z-10" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                        </svg>
+                        <span class="relative z-10">Collections</span>
+                    </button>
+                </div>
+
+                <div class="mt-auto p-4 border-t border-slate-800/50">
+                    <div class="flex justify-between items-center mb-3">
+                        <div class="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Live Activity</div>
+                        <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                    </div>
+                    <div
+                        class="bg-slate-950/80 rounded-xl p-3 h-48 overflow-y-auto font-mono text-[10px] space-y-2 border border-slate-800/50 shadow-inner">
+                        <template x-for="log in logs" :key="log.id">
+                            <div class="flex gap-2 opacity-70 hover:opacity-100 transition-opacity">
+                                <span class="text-slate-600 shrink-0" x-text="log.time"></span>
+                                <span :class="logColor(log.type)" class="truncate" x-text="log.msg"></span>
+                            </div>
+                        </template>
+                        <div x-show="logs.length === 0" class="text-center text-slate-700 py-4 italic">No activity yet
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="flex-1 bg-slate-900/30 relative flex flex-col min-w-0">
+
+                <!-- Tab: Data Explorer -->
+                <div x-show="tab === 'data'" class="h-full flex flex-col" x-transition.opacity.duration.300ms>
+                    <div
+                        class="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50 backdrop-blur sticky top-0 z-10">
+                        <h2 class="font-bold text-white text-lg tracking-tight">Data Explorer</h2>
+                        <div class="flex gap-2">
+                            <div class="relative group">
+                                <span class="absolute left-3 top-2.5 text-slate-500 pointer-events-none">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <circle cx="11" cy="11" r="8" />
+                                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                                    </svg>
+                                </span>
+                                <input type="text" x-model="searchQuery" placeholder="Filter keys..."
+                                    class="bg-slate-950 border border-slate-800 text-sm rounded-lg pl-9 pr-3 py-2 text-white focus:border-emerald-500 focus:outline-none w-48 transition-all focus:w-64 placeholder:text-slate-600 focus:ring-1 focus:ring-emerald-500/50">
+                            </div>
+                            <button @click="refreshData()"
+                                class="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white transition-colors border border-slate-700/50"
+                                title="Refresh">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <polyline points="23 4 23 10 17 10" />
+                                    <polyline points="1 20 1 14 7 14" />
+                                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="overflow-auto flex-1 p-0">
+                        <table class="w-full text-left text-sm border-collapse">
+                            <thead
+                                class="bg-slate-950/50 text-slate-400 text-xs font-semibold uppercase tracking-wider sticky top-0 z-0 backdrop-blur-md">
+                                <tr>
+                                    <th class="px-6 py-4 border-b border-slate-800 w-1/4">Key</th>
+                                    <th class="px-6 py-4 border-b border-slate-800">Value (JSON)</th>
+                                    <th class="px-6 py-4 border-b border-slate-800 w-16 text-right"></th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-800/50">
+                                <template x-for="item in filteredData" :key="item.key">
+                                    <tr class="hover:bg-slate-800/30 group transition-colors">
+                                        <td class="px-6 py-4 font-mono text-emerald-400 font-medium" x-text="item.key">
+                                        </td>
+                                        <td class="px-6 py-4">
+                                            <!-- Normal view -->
+                                            <div x-show="editingKey !== item.key"
+                                                @dblclick="startEdit(item.key, item.value)"
+                                                class="font-mono text-slate-300 truncate max-w-md opacity-80 text-xs cursor-pointer hover:opacity-100 transition-opacity"
+                                                x-text="JSON.stringify(item.value)" title="Double-click to edit"></div>
+                                            <!-- Edit mode -->
+                                            <div x-show="editingKey === item.key" class="flex flex-col gap-2"
+                                                @click.away="cancelEdit()">
+                                                <textarea x-model="editValue"
+                                                    class="w-full bg-slate-950 border border-emerald-500/50 rounded-lg p-2 text-white font-mono text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-y"
+                                                    rows="4"></textarea>
+                                                <div class="flex gap-2">
+                                                    <button @click="saveEdit(item.key)"
+                                                        class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-md transition-colors">Save</button>
+                                                    <button @click="cancelEdit()"
+                                                        class="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs rounded-md transition-colors">Cancel</button>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4 text-right">
+                                            <button @click="deleteKey(item.key)" x-show="user?.role !== 'readonly'"
+                                                class="text-slate-600 hover:text-red-400 transition-colors p-1.5 rounded-md hover:bg-red-950/30 opacity-0 group-hover:opacity-100 focus:opacity-100">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4"
+                                                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <path d="M3 6h18" />
+                                                    <path
+                                                        d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                                    <line x1="10" y1="11" x2="10" y2="17" />
+                                                    <line x1="14" y1="11" x2="14" y2="17" />
+                                                </svg>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </template>
+                                <tr x-show="Object.keys(data).length === 0">
+                                    <td colspan="3" class="p-20 text-center">
+                                        <div
+                                            class="bg-slate-800/20 rounded-full w-24 h-24 flex items-center justify-center mx-auto mb-6">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-slate-600"
+                                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <ellipse cx="12" cy="5" rx="9" ry="3" />
+                                                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+                                                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+                                            </svg>
+                                        </div>
+                                        <h3 class="text-slate-400 font-medium text-lg mb-2">Database is empty</h3>
+                                        <p class="text-slate-600 text-sm max-w-xs mx-auto">Start by sending a POST
+                                            request to <code
+                                                class="bg-slate-800 px-1 py-0.5 rounded text-slate-400">/api/data</code>
+                                            or use the console.</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Tab: User Management -->
+                <div x-show="tab === 'users'" class="h-full flex flex-col p-6 lg:p-8"
+                    x-transition.opacity.duration.300ms>
+                    <div class="flexflex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                        <div>
+                            <h2 class="font-bold text-white text-xl tracking-tight">User Management</h2>
+                            <p class="text-slate-500 text-sm mt-1">Manage system access and permissions.</p>
+                        </div>
+
+                        <div
+                            class="flex items-center gap-0 bg-slate-950 p-1 rounded-xl border border-slate-800 shadow-lg">
+                            <div class="relative">
+                                <span class="absolute left-3 top-2.5 text-slate-600">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                        <circle cx="12" cy="7" r="4" />
+                                    </svg>
+                                </span>
+                                <input type="text" x-model="newUser" placeholder="Username"
+                                    class="bg-transparent border-none text-sm px-3 pl-9 py-2 text-white focus:outline-none w-36 placeholder:text-slate-600">
+                            </div>
+                            <div class="w-px h-5 bg-slate-800 mx-1"></div>
+                            <div class="relative">
+                                <span class="absolute left-3 top-2.5 text-slate-600">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                    </svg>
+                                </span>
+                                <input type="password" x-model="newPass" placeholder="Password"
+                                    class="bg-transparent border-none text-sm px-3 pl-9 py-2 text-white focus:outline-none w-36 placeholder:text-slate-600">
+                            </div>
+                            <div class="w-px h-5 bg-slate-800 mx-1"></div>
+                            <select x-model="newRole"
+                                class="bg-transparent border-none text-sm px-3 py-2 text-slate-300 focus:outline-none cursor-pointer hover:text-white transition-colors">
+                                <option value="user" class="bg-slate-900">Read/Write</option>
+                                <option value="readonly" class="bg-slate-900">Read-Only</option>
+                                <option value="admin" class="bg-slate-900">Admin</option>
+                            </select>
+                            <button @click="createUser()"
+                                class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all ml-1 shadow-lg shadow-emerald-900/20 active:translate-y-0.5">Add
+                                User</button>
+                        </div>
+                    </div>
+
+                    <div class="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/30 shadow-xl">
+                        <table class="w-full text-left text-sm">
+                            <thead
+                                class="bg-slate-900 border-b border-slate-800 text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                                <tr>
+                                    <th class="px-6 py-4">Username</th>
+                                    <th class="px-6 py-4">Role</th>
+                                    <th class="px-6 py-4">Created At</th>
+                                    <th class="px-6 py-4 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-800">
+                                <template x-for="u in userList" :key="u.username">
+                                    <tr class="hover:bg-slate-900/50 transition-colors">
+                                        <td class="px-6 py-4">
+                                            <div class="flex items-center gap-3">
+                                                <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center text-xs font-bold text-slate-300 border border-slate-700 shadow-sm"
+                                                    x-text="u.username.substring(0,2).toUpperCase()"></div>
+                                                <span class="font-medium text-white" x-text="u.username"></span>
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4">
+                                            <!-- Role Display / Edit -->
+                                            <div x-data="{ editing: false, tempRole: u.role }">
+                                                <div x-show="!editing || u.username === 'admin'"
+                                                    @click="u.username !== 'admin' && (editing = true)"
+                                                    class="cursor-pointer group flex items-center gap-2">
+                                                    <span
+                                                        class="px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wide transition-all"
+                                                        :class="{
+                                                            'bg-purple-500/10 text-purple-400 border-purple-500/20': u.role === 'admin',
+                                                            'bg-blue-500/10 text-blue-400 border-blue-500/20': u.role === 'user',
+                                                            'bg-amber-500/10 text-amber-400 border-amber-500/20': u.role === 'readonly'
+                                                        }" x-text="u.role"></span>
+                                                    <svg x-show="u.username !== 'admin'"
+                                                        xmlns="http://www.w3.org/2000/svg"
+                                                        class="w-3 h-3 text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                        <path
+                                                            d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                                                    </svg>
+                                                </div>
+
+                                                <div x-show="editing && u.username !== 'admin'"
+                                                    class="flex items-center gap-1" @click.away="editing = false">
+                                                    <select x-model="tempRole"
+                                                        class="bg-slate-900 border border-slate-700 text-xs text-white rounded px-1 py-0.5 focus:outline-none focus:border-emerald-500">
+                                                        <option value="admin">ADMIN</option>
+                                                        <option value="user">READ/WRITE</option>
+                                                        <option value="readonly">READ-ONLY</option>
+                                                    </select>
+                                                    <button
+                                                        @click="updateUserRole(u.username, tempRole); editing = false"
+                                                        class="text-emerald-500 hover:text-emerald-400 p-1"><svg
+                                                            xmlns="http://www.w3.org/2000/svg" class="w-4 h-4"
+                                                            viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                            stroke-width="2" stroke-linecap="round"
+                                                            stroke-linejoin="round">
+                                                            <polyline points="20 6 9 17 4 12" />
+                                                        </svg></button>
+                                                    <button @click="editing = false"
+                                                        class="text-slate-500 hover:text-slate-400 p-1"><svg
+                                                            xmlns="http://www.w3.org/2000/svg" class="w-4 h-4"
+                                                            viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                            stroke-width="2" stroke-linecap="round"
+                                                            stroke-linejoin="round">
+                                                            <line x1="18" y1="6" x2="6" y2="18" />
+                                                            <line x1="6" y1="6" x2="18" y2="18" />
+                                                        </svg></button>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4 text-slate-500 text-xs font-mono"
+                                            x-text="new Date(u.created_at).toLocaleString()"></td>
+                                        <td class="px-6 py-4 text-right">
+                                            <button x-show="u.username !== 'admin'" @click="deleteUser(u.username)"
+                                                class="group flex items-center gap-1.5 ml-auto text-slate-500 hover:text-red-400 hover:bg-red-950/30 px-3 py-1.5 rounded-lg transition-colors text-xs font-medium border border-transparent hover:border-red-900/30">
+                                                <span>Delete</span>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </template>
+                                <tr x-show="userList.length === 0">
+                                    <td colspan="4" class="p-8 text-center text-slate-500 italic">No users found</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-slate-600 text-xs mt-4 text-center">Root administrator privileges are immutable.</p>
+                </div>
+
+                <!-- Tab: Collections -->
+                <div x-show="tab === 'collections'" class="h-full flex flex-col p-6 lg:p-8"
+                    x-transition.opacity.duration.300ms>
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                        <div>
+                            <h2 class="font-bold text-white text-xl tracking-tight">Collections</h2>
+                            <p class="text-slate-500 text-sm mt-1">MongoDB-style namespaces in your database.</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button @click="importData()"
+                                class="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white rounded-lg text-sm font-medium transition-all flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-cyan-500"
+                                    viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="17 8 12 3 7 8" />
+                                    <line x1="12" y1="3" x2="12" y2="15" />
+                                </svg>
+                                Import
+                            </button>
+                            <button @click="exportData()"
+                                class="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white rounded-lg text-sm font-medium transition-all flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-blue-500"
+                                    viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="7 10 12 15 17 10" />
+                                    <line x1="12" y1="15" x2="12" y2="3" />
+                                </svg>
+                                Export
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <template x-for="col in collectionList" :key="col">
+                            <div class="glass-panel p-5 rounded-xl border border-slate-800 hover:border-emerald-500/30 transition-all cursor-pointer group"
+                                @click="tab = 'data'; searchQuery = col + ':'">
+                                <div class="flex items-center gap-3 mb-3">
+                                    <div
+                                        class="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 flex items-center justify-center ring-1 ring-emerald-500/20 group-hover:ring-emerald-500/40 transition-all">
+                                        <span class="text-emerald-400 font-bold text-sm"
+                                            x-text="col.substring(0,2).toUpperCase()"></span>
+                                    </div>
+                                    <div>
+                                        <div class="font-bold text-white text-sm" x-text="col"></div>
+                                        <div class="text-slate-500 text-[10px]">click to view in explorer</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="collectionList.length === 0" class="col-span-full p-12 text-center">
+                            <div class="text-slate-600 text-sm">No collections yet. Create one via the API.</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden file input for import -->
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="window.__handleImport(event)">
+
+    <script>
+        // Force dark mode
+        document.documentElement.classList.add('dark');
+
+        // Chart data buffers (kept outside alpine for canvas access)
+        const chartData = { reads: [], writes: [] };
+        const MAX_POINTS = 30;
+
+        function drawChart() {
+            const canvas = document.getElementById('ioChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width = canvas.offsetWidth;
+            const h = canvas.height = 80;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Background grid
+            ctx.strokeStyle = 'rgba(51,65,85,0.3)';
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i < 4; i++) {
+                const y = (h / 4) * i;
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+            }
+
+            const maxVal = Math.max(...chartData.reads, ...chartData.writes, 1);
+
+            function drawLine(data, color) {
+                if (data.length < 2) return;
+                const step = w / (MAX_POINTS - 1);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+                data.forEach((v, i) => {
+                    const x = i * step;
+                    const y = h - (v / maxVal) * (h - 10) - 5;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+
+                // Glow effect
+                ctx.strokeStyle = color.replace('1)', '0.3)');
+                ctx.lineWidth = 6;
+                ctx.stroke();
+            }
+
+            drawLine(chartData.reads, 'rgba(16,185,129,1)');
+            drawLine(chartData.writes, 'rgba(59,130,246,1)');
+        }
+
+        function dashboard() {
+            return {
+                socket: null,
+                connected: false,
+                tab: 'data',
+                token: localStorage.getItem('auth_token') || null,
+                user: { username: '', role: '' },
+                stats: {},
+                data: {},
+                userList: [],
+                collectionList: [],
+                newUser: '',
+                newPass: '',
+                newRole: 'user',
+                logs: [],
+                logId: 0,
+                username: '',
+                password: '',
+                loginError: '',
+                startTime: null,
+                uptimeString: '0h 0m 0s',
+                uptimeInterval: null,
+                searchQuery: '',
+                editingKey: null,
+                editValue: '',
+                prevReads: 0,
+                prevWrites: 0,
+
+                get filteredData() {
+                    const query = this.searchQuery.toLowerCase();
+                    if (!query) return Object.entries(this.data).map(([key, value]) => ({ key, value }));
+                    return Object.entries(this.data)
+                        .filter(([key, value]) => key.toLowerCase().includes(query))
+                        .map(([key, value]) => ({ key, value }));
+                },
+
+                init() {
+                    if (this.token) {
+                        try {
+                            const payload = JSON.parse(atob(this.token.split('.')[1]));
+                            this.user = payload;
+                        } catch (e) { }
+
+                        this.connect();
+                        this.refreshStats();
+                        this.refreshData();
+                        this.fetchUsers();
+                    }
+
+                    // Poll Stats + Chart
+                    setInterval(() => {
+                        if (this.token) {
+                            this.refreshStats();
+                            this.updateChart();
+                        }
+                    }, 5000);
+
+                    // Realtime Uptime Ticker
+                    this.uptimeInterval = setInterval(() => {
+                        this.updateLocalUptime();
+                    }, 1000);
+                },
+
+                updateChart() {
+                    const reads = this.stats?.database?.reads || 0;
+                    const writes = this.stats?.database?.writes || 0;
+
+                    // Delta since last poll
+                    const dr = reads - this.prevReads;
+                    const dw = writes - this.prevWrites;
+                    this.prevReads = reads;
+                    this.prevWrites = writes;
+
+                    chartData.reads.push(dr);
+                    chartData.writes.push(dw);
+
+                    if (chartData.reads.length > MAX_POINTS) chartData.reads.shift();
+                    if (chartData.writes.length > MAX_POINTS) chartData.writes.shift();
+
+                    drawChart();
+                },
+
+                updateLocalUptime() {
+                    if (!this.startTime) return;
+                    const now = Date.now();
+                    const diff = Math.floor((now - this.startTime) / 1000);
+
+                    if (diff < 0) return; // server clock skew protection
+
+                    const h = Math.floor(diff / 3600);
+                    const m = Math.floor((diff % 3600) / 60);
+                    const s = Math.floor(diff % 60);
+                    this.uptimeString = `${h}h ${m}m ${s}s`;
+                },
+
+                async login() {
+                    this.loginError = '';
+                    try {
+                        const res = await fetch('/api/login', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username: this.username, password: this.password })
+                        });
+                        const json = await res.json();
+
+                        if (json.success) {
+                            this.token = json.token;
+                            this.user = json.user;
+                            localStorage.setItem('auth_token', this.token);
+                            this.init();
+                        } else {
+                            this.loginError = json.error || 'Invalid credentials';
+                        }
+                    } catch (e) {
+                        this.loginError = 'Unable to reach server';
+                    }
+                },
+
+                logout() {
+                    this.token = null;
+                    this.user = null;
+                    localStorage.removeItem('auth_token');
+                    if (this.socket) {
+                        this.socket.disconnect();
+                        this.socket = null;
+                    }
+                    this.connected = false;
+                },
+
+                connect() {
+                    if (this.socket && this.socket.connected) return;
+
+                    this.socket = io({
+                        auth: { token: this.token }
+                    });
+
+                    this.socket.on('connect', () => {
+                        this.connected = true;
+                        this.addLog('sys', 'Connected to Core');
+                    });
+
+                    this.socket.on('disconnect', () => {
+                        this.connected = false;
+                        this.addLog('err', 'Signal Lost');
+                    });
+
+                    this.socket.on('connect_error', (err) => {
+                        if (err.message.includes('Authentication')) this.logout();
+                        this.addLog('err', 'Auth Error: ' + err.message);
+                    });
+
+                    // Listen for updates (SET/PUT)
+                    this.socket.on('update', (evt) => {
+                        this.addLog('db', `SET ${evt.key}`);
+                        this.data[evt.key] = evt.value;
+                    });
+
+                    // Listen for deletes
+                    this.socket.on('delete', (evt) => {
+                        this.addLog('db', `DEL ${evt.key}`);
+                        delete this.data[evt.key];
+                    });
+                },
+
+                async refreshStats() {
+                    if (!this.token) return;
+                    try {
+                        const res = await fetch('/api/stats', {
+                            headers: { 'Authorization': 'Bearer ' + this.token }
+                        });
+                        if (res.status === 401) return this.logout();
+
+                        const json = await res.json();
+                        this.stats = json;
+
+                        // Sync start time
+                        if (json.server && json.server.startTime && !this.startTime) {
+                            this.startTime = json.server.startTime;
+                            this.updateLocalUptime();
+                        }
+                    } catch (e) { }
+                },
+
+                async refreshData() {
+                    if (!this.token) return;
+                    try {
+                        const res = await fetch('/api/data', {
+                            headers: { 'Authorization': 'Bearer ' + this.token }
+                        });
+                        const json = await res.json();
+                        this.data = json.data || {};
+                    } catch (e) { }
+                },
+
+                async fetchUsers() {
+                    if (!this.token) return;
+                    try {
+                        const res = await fetch('/api/users', { headers: { 'Authorization': 'Bearer ' + this.token } });
+                        const json = await res.json();
+                        if (json.success) {
+                            this.userList = (json.users || []).sort((a, b) => (a.role === 'admin' ? -1 : 1));
+                        }
+                    } catch (e) { console.error(e); }
+                },
+
+                async fetchCollections() {
+                    if (!this.token) return;
+                    try {
+                        const res = await fetch('/api/collections', { headers: { 'Authorization': 'Bearer ' + this.token } });
+                        const json = await res.json();
+                        if (json.success) this.collectionList = json.collections || [];
+                    } catch (e) { console.error(e); }
+                },
+
+                // Import/Export
+                importData() {
+                    document.getElementById('importFile').click();
+                },
+
+                async exportData() {
+                    try {
+                        const res = await fetch('/api/export', { headers: { 'Authorization': 'Bearer ' + this.token } });
+                        if (res.ok) {
+                            const blob = await res.blob();
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `sehawq-export-${Date.now()}.json`;
+                            document.body.appendChild(a);
+                            a.click();
+                            a.remove();
+                            this.addLog('sys', 'Data exported');
+                        }
+                    } catch (e) { alert('Export failed'); }
+                },
+
+                // Inline value editing
+                startEdit(key, value) {
+                    if (this.user?.role === 'readonly') return;
+                    this.editingKey = key;
+                    this.editValue = JSON.stringify(value, null, 2);
+                },
+
+                async saveEdit(key) {
+                    try {
+                        const parsed = JSON.parse(this.editValue);
+                        const res = await fetch('/api/data', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token },
+                            body: JSON.stringify({ key, value: parsed })
+                        });
+                        if (res.ok) {
+                            this.data[key] = parsed;
+                            this.addLog('db', 'EDIT ' + key);
+                        }
+                    } catch (e) {
+                        alert('Invalid JSON');
+                        return; // don't close editor
+                    }
+                    this.editingKey = null;
+                },
+
+                cancelEdit() {
+                    this.editingKey = null;
+                },
+
+                // Custom Modal State
+                showModal: false,
+                modalTitle: '',
+                modalMessage: '',
+                modalCallback: null,
+
+                confirmAction(title, message, callback) {
+                    this.modalTitle = title;
+                    this.modalMessage = message;
+                    this.modalCallback = callback;
+                    this.showModal = true;
+                },
+
+                closeModal() {
+                    this.showModal = false;
+                    this.modalCallback = null;
+                },
+
+                executeAction() {
+                    if (this.modalCallback) this.modalCallback();
+                    this.closeModal();
+                },
+
+                async deleteKey(key) {
+                    this.confirmAction('Delete Item', 'Are you sure you want to permanently delete "' + key + '"?', async () => {
+                        // Optimistic update
+                        delete this.data[key];
+
+                        const res = await fetch('/api/data/' + key, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': 'Bearer ' + this.token }
+                        });
+
+                        if (!res.ok) {
+                            this.refreshData(); // Revert
+                        }
+                    });
+                },
+
+                async downloadBackup() {
+                    const res = await fetch('/api/backup', { headers: { 'Authorization': 'Bearer ' + this.token } });
+                    if (res.ok) {
+                        const blob = await res.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `sehawq-backup-${Date.now()}.json`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        this.addLog('sys', 'Backup Exported');
+                    }
+                },
+
+                async createUser() {
+                    if (!this.newUser || !this.newPass) return;
+                    try {
+                        const res = await fetch('/api/register', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token },
+                            body: JSON.stringify({ username: this.newUser, password: this.newPass, role: this.newRole })
+                        });
+                        const json = await res.json();
+                        if (res.ok) {
+                            this.newUser = '';
+                            this.newPass = '';
+                            this.fetchUsers();
+                            this.addLog('sys', `User created: ${json.username}`);
+                        } else {
+                            alert('Creation Failed: ' + (json.error || 'Unknown error'));
+                        }
+                    } catch (e) { alert('Network Error'); }
+                },
+
+                async deleteUser(username) {
+                    this.confirmAction('Revoke Access', 'Are you sure you want to delete user "' + username + '"?', async () => {
+                        const res = await fetch('/api/users/' + username, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': 'Bearer ' + this.token }
+                        });
+                        if (res.ok) {
+                            this.fetchUsers();
+                            this.addLog('sys', 'User Deleted: ' + username);
+                        }
+                    });
+                },
+
+                async updateUserRole(username, newRole) {
+                    const res = await fetch('/api/users/' + username, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + this.token
+                        },
+                        body: JSON.stringify({ role: newRole })
+                    });
+
+                    if (res.ok) {
+                        this.fetchUsers();
+                        this.addLog('sys', 'Role Updated: ' + username + ' -> ' + newRole);
+                    } else {
+                        const json = await res.json();
+                        alert('Update Failed: ' + json.error);
+                    }
+                },
+
+                addLog(type, msg) {
+                    const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    this.logs.unshift({ id: this.logId++, time, type, msg });
+                    if (this.logs.length > 50) this.logs.pop();
+                },
+
+                logColor(type) {
+                    if (type === 'err') return 'text-red-400 font-bold';
+                    if (type === 'db') return 'text-emerald-400 font-medium';
+                    return 'text-slate-400';
+                }
+            }
+        }
+
+        // Global import handler (outside alpine scope)
+        window.__handleImport = async function (event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            try {
+                const text = await file.text();
+                const data = JSON.parse(text);
+                const token = localStorage.getItem('auth_token');
+                const res = await fetch('/api/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify(data)
+                });
+                const json = await res.json();
+                if (json.success) {
+                    alert('Imported ' + json.imported + ' keys');
+                    location.reload();
+                } else {
+                    alert('Import failed: ' + json.error);
+                }
+            } catch (e) {
+                alert('Invalid JSON file');
+            }
+            event.target.value = ''; // reset file input
+        };
+    </script>
+</body>
+
+</html>

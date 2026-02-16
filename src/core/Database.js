@@ -1,293 +1,335 @@
-/**
- * SehawqDB - The main database class
- * 
- * Started as a simple JSON store, now with performance optimizations
- * Because waiting for databases to load is boring 😴
- */
-
 const EventEmitter = require('events');
-const path = require('path');
 const fs = require('fs').promises;
+const path = require('path');
+const Collection = require('./Collection');
 
+// Main DB class with WAL support
 class SehawqDB extends EventEmitter {
-  constructor(options = {}) {
+  constructor(opts = {}) {
     super();
-    
-    // Config with some sensible defaults
-    this.config = {
-      path: './sehawq-data.json',
+
+    this.conf = Object.assign({
+      path: './sehawq.json',
       autoSave: true,
-      saveInterval: 5000,
-      cacheEnabled: true,
-      cacheSize: 1000,
-      ...options
-    };
+      saveInterval: 30000, // Longer interval because WAL safe guards us
+      cache: true,
+      cacheLimit: 1000
+    }, opts);
 
-    // Performance optimizations
-    this.data = new Map(); // Using Map for better performance
-    this.cache = new Map(); // Hot data cache
-    this.indexes = new Map(); // Query indexes
-    
-    // Runtime stats (for debugging)
-    this.stats = {
-      reads: 0,
-      writes: 0,
-      cacheHits: 0,
-      cacheMisses: 0
-    };
+    this.logPath = this.conf.path.replace(/\.json$/, '.log');
 
-    this._initialized = false;
-    this._saveTimeout = null;
+    // Internal storage
+    this._store = new Map();
+    this._cache = new Map();
+    this._idx = new Map();
 
-    // Initialize - but don't block the constructor
-    this._init().catch(error => {
-      console.error('🚨 SehawqDB init failed:', error);
-    });
+    // TTL tracking - key -> timestamp when it expires
+    this._ttl = new Map();
+    this._ttlTimer = null;
+
+    // Watchers - key -> Set of callbacks
+    this._watchers = new Map();
+
+    // Collection instances (lazy, cached)
+    this._collections = new Map();
+
+    // Stats
+    this.metrics = { r: 0, w: 0, h: 0, m: 0 };
+
+    this._saving = false;
+    this._timer = null;
+    this._walHandle = null; // File handle for appending
   }
 
-  /**
-   * Async initialization
-   * Because sometimes we need to wait for things...
-   */
-  async _init() {
-    if (this._initialized) return;
+  // Plugin System 🔌
+  use(plugin, opts = {}) {
+    try {
+      plugin(this, opts);
+    } catch (e) {
+      console.error('Plugin Error:', e.message); // Don't crash, just warn
+    }
+    return this; // Chainable
+  }
+
+  async init() {
+    if (this.ready || this._initializing) return;
+    this._initializing = true;
 
     try {
-      // Try to load existing data
-      await this._loadFromDisk();
-      
-      // Start auto-save if enabled
-      if (this.config.autoSave) {
-        this._startAutoSave();
+      // 1. Ensure dir exists
+      const dir = path.dirname(this.conf.path);
+      await fs.mkdir(dir, { recursive: true });
+
+      // 2. Load snapshot
+      await this.loadSnapshot();
+
+      // 2. Replay WAL
+      await this.replayWAL();
+
+      // 3. Open WAL for appending
+      // 'a' flag for append
+      this._walHandle = await fs.open(this.logPath, 'a');
+
+      if (this.conf.autoSave) {
+        this.startSaver();
       }
 
-      this._initialized = true;
+      // TTL cleanup loop
+      this._startTTLSweep();
+
+      this.ready = true;
       this.emit('ready');
-      
-      if (this.config.debug) {
-        console.log('✅ SehawqDB ready - Performance mode: ON');
-      }
-    } catch (error) {
-      this.emit('error', error);
-      throw error;
+      if (this.conf.debug) console.log('DB Ready (WAL Enabled)');
+
+    } catch (e) {
+      this.emit('error', e);
+      throw e;
     }
   }
 
-  /**
-   * Set a value - the bread and butter
-   */
-  set(key, value) {
-    if (!this._initialized) {
-      throw new Error('Database not initialized. Wait for ready event.');
+  async loadSnapshot() {
+    try {
+      const txt = await fs.readFile(this.conf.path, 'utf8');
+      const json = JSON.parse(txt);
+      for (const k in json) this._store.set(k, json[k]);
+      if (this.conf.debug) console.log(`Snapshot loaded: ${this._store.size} items`);
+    } catch (e) {
+      if (e.code !== 'ENOENT') throw e;
+    }
+  }
+
+  async replayWAL() {
+    try {
+      const log = await fs.readFile(this.logPath, 'utf8');
+      const lines = log.split('\n');
+      let replayCount = 0;
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const entry = JSON.parse(line);
+          if (entry.op === 'put') this._store.set(entry.k, entry.v);
+          if (entry.op === 'del') this._store.delete(entry.k);
+          if (entry.op === 'clr') this._store.clear();
+          if (entry.op === 'ttl') {
+            // only restore if not already expired
+            if (entry.exp > Date.now()) this._ttl.set(entry.k, entry.exp);
+          }
+          replayCount++;
+        } catch (err) {
+          console.warn('Corrupt WAL line ignored:', line);
+        }
+      }
+
+      if (this.conf.debug && replayCount > 0) {
+        console.log(`WAL Replayed: ${replayCount} ops`);
+      }
+    } catch (e) {
+      if (e.code !== 'ENOENT') throw e;
+    }
+  }
+
+  async appendToWAL(entry) {
+    if (!this._walHandle) return;
+    const line = JSON.stringify(entry) + '\n';
+    await this._walHandle.write(line);
+    // Optional: await this._walHandle.sync(); // For extreme safety but slower
+  }
+
+  async set(k, v, opts = {}) {
+    if (!this.ready) throw new Error('DB not ready');
+
+    const old = this._store.get(k);
+    this._store.set(k, v);
+
+    if (this.conf.cache) this.updateCache(k, v);
+
+    // WAL Write
+    await this.appendToWAL({ op: 'put', k, v });
+
+    // TTL handling
+    if (opts.ttl && typeof opts.ttl === 'number') {
+      const exp = Date.now() + (opts.ttl * 1000);
+      this._ttl.set(k, exp);
+      await this.appendToWAL({ op: 'ttl', k, exp });
     }
 
-    const oldValue = this.data.get(key);
-    this.data.set(key, value);
-    
-    // Cache the hot data
-    if (this.config.cacheEnabled) {
-      this._updateCache(key, value);
-    }
+    this.metrics.w++;
+    this.emit('set', { key: k, value: v, old });
 
-    // Update indexes if any
-    this._updateIndexes(key, value, oldValue);
-
-    this.stats.writes++;
-    this.emit('set', { key, value, oldValue });
-
-    // Immediate save for important data, otherwise batch it
-    if (this.config.autoSave) {
-      this._queueSave();
-    }
+    // Notify watchers
+    this._notifyWatchers(k, v, old);
 
     return this;
   }
 
-  /**
-   * Get a value - faster than your morning coffee
-   */
-  get(key) {
-    if (!this._initialized) {
-      throw new Error('Database not initialized.');
+  get(k) {
+    if (!this.ready) throw new Error('DB not ready');
+    this.metrics.r++;
+
+    if (this.conf.cache && this._cache.has(k)) {
+      this.metrics.h++;
+      return this._cache.get(k);
     }
 
-    this.stats.reads++;
-
-    // Check cache first (hot path)
-    if (this.config.cacheEnabled && this.cache.has(key)) {
-      this.stats.cacheHits++;
-      return this.cache.get(key);
-    }
-
-    this.stats.cacheMisses++;
-    const value = this.data.get(key);
-
-    // Cache it for next time
-    if (this.config.cacheEnabled && value !== undefined) {
-      this._updateCache(key, value);
-    }
-
-    return value;
+    this.metrics.m++;
+    const v = this._store.get(k);
+    if (this.conf.cache && v !== undefined) this.updateCache(k, v);
+    return v;
   }
 
-  /**
-   * Delete a key - poof! gone.
-   */
-  delete(key) {
-    if (!this.data.has(key)) return false;
+  async delete(k) {
+    if (!this._store.has(k)) return false;
 
-    const oldValue = this.data.get(key);
-    this.data.delete(key);
-    this.cache.delete(key);
-    this._removeFromIndexes(key, oldValue);
+    const old = this._store.get(k);
+    this._store.delete(k);
+    this._cache.delete(k);
+    this._ttl.delete(k); // cleanup ttl if any
 
-    this.emit('delete', { key, oldValue });
-    this._queueSave();
+    // WAL Write
+    await this.appendToWAL({ op: 'del', k });
 
+    this.emit('delete', { key: k, old });
+    this._notifyWatchers(k, undefined, old);
     return true;
   }
 
-  /**
-   * Check if key exists - no guessing games
-   */
-  has(key) {
-    return this.data.has(key);
-  }
+  has(k) { return this._store.has(k); }
+  all() { return Object.fromEntries(this._store); }
 
-  /**
-   * Get all data - use carefully!
-   */
-  all() {
-    return Object.fromEntries(this.data);
-  }
+  async clear() {
+    const size = this._store.size;
+    this._store.clear();
+    this._cache.clear();
+    this._idx.clear(); // If index manager listens to clear, good. If not, manual clear needed in index manager logic.
 
-  /**
-   * Clear everything - the nuclear option
-   */
-  clear() {
-    const size = this.data.size;
-    this.data.clear();
-    this.cache.clear();
-    this.indexes.clear();
+    await this.appendToWAL({ op: 'clr' });
 
     this.emit('clear', { size });
-    this._queueSave();
-
     return this;
   }
 
-  /**
-   * Smart cache management
-   */
-  _updateCache(key, value) {
-    // Simple LRU-like cache eviction
-    if (this.cache.size >= this.config.cacheSize) {
-      const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
+  updateCache(k, v) {
+    if (this._cache.size >= this.conf.cacheLimit) {
+      const head = this._cache.keys().next().value;
+      this._cache.delete(head);
     }
-    
-    this.cache.set(key, value);
+    this._cache.set(k, v);
   }
 
-  /**
-   * Index management for faster queries
-   */
-  _updateIndexes(key, newValue, oldValue) {
-    // TODO: Implement in IndexManager.js
-    // This will make queries lightning fast ⚡
-  }
+  // Snapshotting (Compact WAL)
+  async save() {
+    if (this._saving) return; // Prevent overlap
+    this._saving = true;
 
-  _removeFromIndexes(key, oldValue) {
-    // TODO: Remove from indexes
-  }
-
-  /**
-   * File operations with error handling
-   */
-  async _loadFromDisk() {
     try {
-      const data = await fs.readFile(this.config.path, 'utf8');
-      const parsed = JSON.parse(data);
-      
-      // Convert object to Map for better performance
-      for (const [key, value] of Object.entries(parsed)) {
-        this.data.set(key, value);
+      // 1. Write full state to .json
+      const raw = JSON.stringify(Object.fromEntries(this._store), null, 2);
+      const tmp = this.conf.path + '.tmp';
+      await fs.writeFile(tmp, raw);
+      await fs.rename(tmp, this.conf.path);
+
+      // 2. Rotate WAL
+      // Close existing handle safely
+      if (this._walHandle) {
+        await this._walHandle.close();
+        this._walHandle = null;
       }
 
-      if (this.config.debug) {
-        console.log(`📁 Loaded ${this.data.size} records from disk`);
-      }
-    } catch (error) {
-      if (error.code === 'ENOENT') {
-        // File doesn't exist yet - that's fine
-        if (this.config.debug) {
-          console.log('📁 No existing data file - starting fresh');
+      // Truncate file
+      await fs.writeFile(this.logPath, '');
+
+      // Reopen
+      this._walHandle = await fs.open(this.logPath, 'a');
+
+      if (this.conf.debug) console.log('Snapshot saved & WAL compacted');
+      this.emit('save', { count: this._store.size });
+    } catch (e) {
+      console.error('Save failed:', e);
+      this.emit('error', e);
+    } finally {
+      this._saving = false;
+    }
+  }
+
+  startSaver() {
+    // Regular snapshotting to keep WAL small
+    this._timer = setInterval(() => {
+      if (this.ready) this.save();
+    }, this.conf.saveInterval);
+  }
+
+  // --- TTL Sweep ---
+  // Runs every 10s, deletes expired keys. Not the most efficient but
+  // for our scale it's more than enough. TODO: batch expire for perf
+  _startTTLSweep() {
+    this._ttlTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [k, exp] of this._ttl) {
+        if (now >= exp) {
+          this._ttl.delete(k);
+          this.delete(k).catch(() => { }); // async but we dont wait
+          if (this.conf.debug) console.log(`TTL expired: ${k}`);
         }
-      } else {
-        throw error;
       }
+    }, 10000);
+  }
+
+  // --- Watch / Unwatch ---
+  // Firebase-style reactive listeners on specific keys
+  watch(key, cb) {
+    if (!this._watchers.has(key)) this._watchers.set(key, new Set());
+    this._watchers.get(key).add(cb);
+  }
+
+  unwatch(key, cb) {
+    if (!this._watchers.has(key)) return;
+    if (cb) {
+      this._watchers.get(key).delete(cb);
+      if (this._watchers.get(key).size === 0) this._watchers.delete(key);
+    } else {
+      this._watchers.delete(key); // remove all watchers for this key
     }
   }
 
-  async _saveToDisk() {
-    try {
-      const data = JSON.stringify(Object.fromEntries(this.data), null, 2);
-      
-      // Atomic write - prevent corruption
-      const tempPath = this.config.path + '.tmp';
-      await fs.writeFile(tempPath, data);
-      await fs.rename(tempPath, this.config.path);
-
-      if (this.config.debug) {
-        console.log(`💾 Saved ${this.data.size} records to disk`);
-      }
-
-      this.emit('save', { recordCount: this.data.size });
-    } catch (error) {
-      this.emit('error', error);
+  _notifyWatchers(key, newVal, oldVal) {
+    if (!this._watchers.has(key)) return;
+    for (const cb of this._watchers.get(key)) {
+      try { cb(newVal, oldVal); } catch (e) { /* don't let bad callbacks crash us */ }
     }
   }
 
-  /**
-   * Batch save operations for performance
-   */
-  _queueSave() {
-    if (this._saveTimeout) clearTimeout(this._saveTimeout);
-    
-    this._saveTimeout = setTimeout(() => {
-      this._saveToDisk();
-    }, 100); // Batch saves within 100ms window
+  // --- Collections ---
+  // Returns a Collection instance for the given name.
+  // Cached so you always get the same reference.
+  collection(name) {
+    if (!this._collections.has(name)) {
+      this._collections.set(name, new Collection(this, name));
+    }
+    return this._collections.get(name);
   }
 
-  _startAutoSave() {
-    setInterval(() => {
-      if (this._initialized) {
-        this._saveToDisk();
-      }
-    }, this.config.saveInterval);
-  }
-
-  /**
-   * Performance monitoring
-   */
   getStats() {
+    const total = this.metrics.h + this.metrics.m;
+    const rate = total === 0 ? 0 : ((this.metrics.h / total) * 100).toFixed(2);
+
     return {
-      ...this.stats,
-      cacheHitRate: this.stats.reads > 0 
-        ? (this.stats.cacheHits / this.stats.reads * 100).toFixed(2) + '%'
-        : '0%',
-      totalRecords: this.data.size,
-      cacheSize: this.cache.size
+      reads: this.metrics.r,
+      writes: this.metrics.w,
+      hits: this.metrics.h,
+      misses: this.metrics.m,
+      rate: `${rate}%`,
+      size: this._store.size,
+      ttlKeys: this._ttl.size
     };
   }
 
-  /**
-   * Clean shutdown - be nice to your data
-   */
   async close() {
-    if (this._saveTimeout) clearTimeout(this._saveTimeout);
-    await this._saveToDisk();
-    this._initialized = false;
+    if (this._timer) clearInterval(this._timer);
+    if (this._ttlTimer) clearInterval(this._ttlTimer);
+    await this.save(); // Final snapshot
+    if (this._walHandle) await this._walHandle.close();
+    this.ready = false;
     this.emit('close');
   }
 }

@@ -1,8 +1,15 @@
 {
   "name": "sehawq.db",
-  "version": "4.0.3",
-  "description": "Lightweight JSON-based database with REST API and real-time sync",
+  "version": "5.0.0",
+  "description": "Lightweight JSON-based database with REST API, realtime sync, and GDPR compliance",
   "main": "src/index.js",
+  "bin": {
+    "sehawq": "./bin/sehawq.js"
+  },
+  "scripts": {
+    "start": "node start.js",
+    "test": "node test-files/full-system-test.js"
+  },
   "keywords": [
     "database",
     "json",
@@ -10,7 +17,14 @@
     "realtime",
     "firebase-alternative",
     "nodejs",
-    "embedded-database"
+    "embedded-database",
+    "quick.db",
+    "quickdb",
+    "dashboard",
+    "gdpr",
+    "replication",
+    "cli",
+    "local-db"
   ],
   "author": "Sehawq",
   "license": "MIT",
@@ -18,17 +32,13 @@
     "type": "git",
     "url": "https://github.com/sehawq/sehawq.db"
   },
-  "scripts": {
-    "start": "node examples/server.js",
-    "dev": "node --inspect examples/server.js",
-    "test": "node tests/run.js",
-    "benchmark": "node utils/benchmark.js",
-    "test:comprehensive": "node test-files/comprehensive-test-v2.js"
-  },
   "dependencies": {
+    "axios": "^1.13.5",
+    "cors": "^2.8.5",
     "express": "^4.18.0",
+    "jsonwebtoken": "^9.0.3",
     "socket.io": "^4.6.0",
-    "cors": "^2.8.5"
+    "socket.io-client": "^4.8.3"
   },
   "engines": {
     "node": ">=14.0.0"

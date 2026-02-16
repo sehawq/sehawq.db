@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>SehawqDB + React Demo</title>
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & Babel -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Socket.io -->
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <!-- Sehawq Client -->
+    <script src="../src/client.js"></script>
+</head>
+
+<body class="bg-gray-900 text-white min-h-screen p-10">
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // Mocking the hook logic inside browser since we can't require('../src/react.js') without a bundler
+        // In a real app, user would: import { useSehawq } from 'sehawq-react';
+
+        const { useState, useEffect } = React;
+        const token = localStorage.getItem('sehawq_token');
+        const db = new Sehawq('http://localhost:3000', { token });
+
+        function useSehawq(key, initialVal) {
+            const [data, setData] = useState(initialVal);
+
+            useEffect(() => {
+                // Initial
+                db.get(key).then(v => v !== undefined && setData(v));
+
+                // Live
+                const cb = (val) => setData(val);
+                db.on(key, cb);
+
+                return () => db.off(key, cb);
+            }, [key]);
+
+            const set = (v) => db.set(key, v);
+            return [data, set];
+        }
+
+        function App() {
+            const [token, setToken] = useState(localStorage.getItem('sehawq_token'));
+            const [username, setUsername] = useState('');
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+
+            // We need to pass token to useSehawq somehow, or simpler: 
+            // Just let useSehawq pick it up from localStorage since we updated react.js (but here we are mocking it).
+            // Since we mocked useSehawq above, we need to update the MOCK to handle auth too!
+            // Wait, let's update the MOCK useSehawq above first.
+
+            // Actually, let's just do a simple conditional render here.
+
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                setError('');
+                try {
+                    const res = await fetch('http://localhost:3000/api/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+                    const json = await res.json();
+                    if (json.success) {
+                        localStorage.setItem('sehawq_token', json.token);
+                        setToken(json.token);
+                        // Reload to refresh DB connection with new token in the mock
+                        window.location.reload();
+                    } else {
+                        setError(json.error || 'Login failed');
+                    }
+                } catch (err) {
+                    setError('Connection error');
+                }
+            };
+
+            const handleLogout = () => {
+                localStorage.removeItem('sehawq_token');
+                setToken(null);
+                window.location.reload();
+            };
+
+            if (!token) {
+                return (
+                    <div class="max-w-xs mx-auto mt-20 bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700">
+                        <h2 class="text-2xl font-bold mb-6 text-center text-blue-400">Login</h2>
+                        <form onSubmit={handleLogin}>
+                            <div class="mb-4">
+                                <label class="block text-gray-400 text-xs uppercase mb-2">Username</label>
+                                <input type="text" value={username} onChange={e => setUsername(e.target.value)} class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white focus:outline-none focus:border-blue-500" placeholder="admin" />
+                            </div>
+                            <div class="mb-6">
+                                <label class="block text-gray-400 text-xs uppercase mb-2">Password</label>
+                                <input type="password" value={password} onChange={e => setPassword(e.target.value)} class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white focus:outline-none focus:border-blue-500" placeholder="••••••••" />
+                            </div>
+                            {error && <div class="mb-4 text-red-400 text-xs text-center">{error}</div>}
+                            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition">
+                                Login
+                            </button>
+                        </form>
+                    </div>
+                );
+            }
+
+            const [count, setCount] = useSehawq('demo:count', 0);
+            const [logs, setLogs] = useSehawq('demo:logs', []);
+
+            const increment = () => {
+                setCount((count || 0) + 1);
+                const newLog = `Clicked at ${new Date().toLocaleTimeString()}`;
+                setLogs([newLog, ...(logs || []).slice(0, 4)]);
+            };
+
+            return (
+                <div class="max-w-md mx-auto bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700">
+                    <div class="flex justify-between items-center mb-4">
+                        <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                            ⚛️ Sehawq + React
+                        </h1>
+                        <button onClick={handleLogout} class="text-xs text-gray-500 hover:text-white underline">Logout</button>
+                    </div>
+
+                    <div class="text-center py-10">
+                        <div class="text-6xl font-mono mb-4">{count}</div>
+                        <button
+                            onClick={increment}
+                            class="px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-full font-bold transition transform hover:scale-105"
+                        >
+                            + Increment (Realtime)
+                        </button>
+                    </div>
+
+                    <div class="mt-6 border-t border-gray-700 pt-4">
+                        <h3 class="text-sm font-semibold text-gray-400 mb-2">Live Logs:</h3>
+                        <ul class="text-sm font-mono text-green-400 space-y-1">
+                            {(logs || []).map((log, i) => (
+                                <li key={i}>{log}</li>
+                            ))}
+                        </ul>
+                    </div>
+
+                    <div class="mt-4 text-xs text-gray-500 text-center">
+                        Open this page in another tab to see <b>instant</b> synchronization.
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>

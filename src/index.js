@@ -1,116 +1,167 @@
-// src/index.js - The heart of SehawqDB v4.0.0
 const Database = require('./core/Database');
 const QueryEngine = require('./core/QueryEngine');
 const IndexManager = require('./core/IndexManager');
-const Storage = require('./core/Storage');
+const Migration = require('./core/Migration');
+const Replication = require('./core/Replication');
+const AuditLog = require('./core/AuditLog');
+const Compliance = require('./core/Compliance');
+const APIServer = require('./server/api');
+const WebSocketServer = require('./server/websocket');
 
 class SehawqDB {
-  constructor(options = {}) {
-    this.database = new Database(options);
-    this.queryEngine = new QueryEngine(this.database);
-    this.indexManager = new IndexManager(this.database, options);
-    
-    // Database methods
-    this.set = this.database.set.bind(this.database);
-    this.get = this.database.get.bind(this.database);
-    this.delete = this.database.delete.bind(this.database);
-    this.has = this.database.has.bind(this.database);
-    this.all = this.database.all.bind(this.database);
-    this.clear = this.database.clear.bind(this.database);
-    
-    // 🔥 Query methods
-    this.find = this.queryEngine.find.bind(this.queryEngine);
-    this.where = this.queryEngine.where.bind(this.queryEngine);
-    this.findAll = this.queryEngine.findAll.bind(this.queryEngine);
-    this.count = this.queryEngine.count.bind(this.queryEngine);
-    this.sum = this.queryEngine.sum.bind(this.queryEngine);
-    this.avg = this.queryEngine.avg.bind(this.queryEngine);
-    this.min = this.queryEngine.min.bind(this.queryEngine);
-    this.max = this.queryEngine.max.bind(this.queryEngine);
-    this.groupBy = this.queryEngine.groupBy.bind(this.queryEngine);
-    
-    // 🔥 Index methods
-    this.createIndex = this.indexManager.createIndex.bind(this.indexManager);
-    this.dropIndex = this.indexManager.dropIndex.bind(this.indexManager);
-    this.getIndexes = this.indexManager.getIndexes.bind(this.indexManager);
-    
-    // 🔥 ARRAY & MATH Methods
-    this.push = this.database.push?.bind(this.database) || this._fallbackPush.bind(this);
-    this.pull = this.database.pull?.bind(this.database) || this._fallbackPull.bind(this);
-    this.add = this.database.add?.bind(this.database) || this._fallbackAdd.bind(this);
-    this.subtract = this.database.subtract?.bind(this.database) || this._fallbackSubtract.bind(this);
-    
-    // 🔥 BACKUP & RESTORE Methods
-    this.backup = this.database.backup?.bind(this.database) || this._fallbackBackup.bind(this);
-    this.restore = this.database.restore?.bind(this.database) || this._fallbackRestore.bind(this);
-  }
+  constructor(opts = {}) {
+    // Core components
+    this.db = new Database(opts);
+    this.query = new QueryEngine(this.db);
+    this.idx = new IndexManager(this.db, opts);
+    this.migration = new Migration(this.db);
+    this.repl = opts.replication ? new Replication(this.db, opts.replication) : null;
 
-  // 🔥 FALLBACK Methods
-  _fallbackPush(key, value) {
-    const array = this.get(key) || [];
-    array.push(value);
-    this.set(key, array);
-    return array.length;
-  }
+    // audit + compliance (opt-in)
+    this.audit = opts.audit !== false ? new AuditLog(this.db, opts.audit || {}) : null;
+    this.compliance = new Compliance(this.db);
+    // attach to db instance so plugins/api can find them
+    if (this.audit) this.db.audit = this.audit;
+    this.db.compliance = this.compliance;
 
-  _fallbackPull(key, value) {
-    const array = this.get(key) || [];
-    const index = array.indexOf(value);
-    if (index > -1) {
-      array.splice(index, 1);
-      this.set(key, array);
-      return true;
+    // Connect them
+    this.query.setIndexManager(this.idx);
+
+    // Server stuff
+    this.server = null;
+    this.socket = null;
+    this.opts = opts;
+
+    if (opts.enableServer) {
+      this.server = new APIServer(this.db, opts);
     }
-    return false;
   }
 
-  _fallbackAdd(key, number) {
-    const current = this.get(key) || 0;
-    const newValue = current + number;
-    this.set(key, newValue);
-    return newValue;
-  }
+  // Core Methods (Delegated dynamically to allow plugins to override them)
+  set(key, val, opts) { return this.db.set(key, val, opts); }
+  get(key) { return this.db.get(key); }
+  delete(key) { return this.db.delete(key); }
+  has(key) { return this.db.has(key); }
+  all() { return this.db.all(); }
 
-  _fallbackSubtract(key, number) {
-    return this._fallbackAdd(key, -number);
-  }
+  // Query helpers
+  find(fn) { return this.query.find(fn); }
+  where(field, op, val) { return this.query.where(field, op, val); }
+  count(fn) { return this.query.count(fn); }
+  sum(field, fn) { return this.query.sum(field, fn); }
+  avg(field, fn) { return this.query.avg(field, fn); }
+  min(field, fn) { return this.query.min(field, fn); }
+  max(field, fn) { return this.query.max(field, fn); }
 
-  // 🔥 BACKUP FALLBACK Methods
-  async _fallbackBackup(backupPath = null) {
-    const path = backupPath || `./sehawq-backup-${Date.now()}.json`;
-    const storage = new Storage(path);
-    const data = this.all();
-    await storage.write(data);
-    return path;
-  }
+  // Index helpers
+  createIndex(field, type) { return this.idx.create(field, type); }
+  dropIndex(field) { return this.idx.drop(field); }
 
-  async _fallbackRestore(backupPath) {
-    const storage = new Storage(backupPath);
-    const data = await storage.read();
-    this.clear();
-    for (const [key, value] of Object.entries(data)) {
-      this.set(key, value);
-    }
-    return true;
-  }
+  // Collections (MongoDB-style)
+  collection(name) { return this.db.collection(name); }
 
-  async start() {
-    await new Promise(resolve => this.database.on('ready', resolve));
+  // Reactive watchers (Firebase-style)
+  watch(key, cb) { this.db.watch(key, cb); }
+  unwatch(key, cb) { this.db.unwatch(key, cb); }
+
+  // Migrations
+  migrate(version, name, fn) { this.migration.add(version, name, fn); return this; }
+  runMigrations() { return this.migration.run(); }
+  migrationStatus() { return this.migration.status(); }
+
+  // Replication
+  replicationStatus() { return this.repl ? this.repl.status() : null; }
+
+  // Audit
+  auditLog(filter) { return this.audit ? this.audit.query(filter) : Promise.resolve([]); }
+
+  // GDPR / Compliance
+  gdprExport(userId) { return this.compliance.exportUserData(userId); }
+  gdprDelete(userId) { return this.compliance.deleteUserData(userId); }
+  gdprAnonymize(userId) { return this.compliance.anonymizeUserData(userId); }
+  complianceReport() { return this.compliance.report(); }
+
+  // Plugin System 🔌
+  use(plugin, opts = {}) {
+    this.db.use(plugin, opts);
     return this;
   }
 
-  async stop() {
-    await this.database.close();
+  async start() {
+    await this.db.init();
+
+    // migrations auto-run on startup
+    await this.migration.run();
+
+    if (this.server) {
+      await this.server.start();
+    }
+
+    // Init Realtime now that server is running
+    if (this.opts.enableRealtime && this.server) {
+      this.socket = new WebSocketServer(this.db, this.server.httpServer, this.opts);
+    }
+
+    // kick off replication if configured
+    if (this.repl) {
+      // pass the repl instance to api so it can add endpoints
+      if (this.server) this.server.repl = this.repl;
+      this.repl.start();
+    }
+
+    if (this.db.conf?.debug) {
+      console.log('SehawqDB Started');
+    }
   }
 
-  // 🔥 STATS Methods 
+  async stop() {
+    if (this.audit) await this.audit.stop();
+    if (this.repl) this.repl.stop();
+    if (this.server) await this.server.stop();
+    if (this.socket) this.socket.close();
+    await this.db.close();
+  }
+
   getStats() {
     return {
-      database: this.database.getStats?.(),
-      query: this.queryEngine.getStats?.(),
-      indexes: this.indexManager.getStats?.()
+      database: this.db.getStats(),
+      // query: this.query.getStats() // Removed stats from lightweight query engine
     };
+  }
+
+  // Fallbacks for array ops
+  push(key, item) {
+    const list = this.get(key) || [];
+    if (!Array.isArray(list)) throw new Error('Key is not a list');
+    list.push(item);
+    return this.set(key, list);
+  }
+
+  pull(key, item) {
+    const list = this.get(key);
+    if (!Array.isArray(list)) return false;
+
+    // Simple filter
+    const json = JSON.stringify(item);
+    const newList = list.filter(x => JSON.stringify(x) !== json);
+
+    return this.set(key, newList);
+  }
+
+  add(key, n) {
+    const val = this.get(key) || 0;
+    return this.set(key, val + n);
+  }
+
+  subtract(key, n) {
+    return this.add(key, -n);
+  }
+
+  // Backup utils
+  async backup(dest) {
+    // TODO: Implement proper backup to external path
+    console.warn('Backup not fully implemented yet');
   }
 }
 
-module.exports = { SehawqDB };
+module.exports = SehawqDB;

@@ -1,9 +1,6 @@
-/**
- * Persistence Layer - Handles data storage and retrieval 💾
- * 
- * The bridge between memory and permanent storage
- * Because RAM is great, but it forgets everything when you blink
- */
+// Persistence Layer
+// Handles saving/loading data to disk. Supports auto-save,
+// basic compression/encryption stubs, and backup recovery.
 
 const fs = require('fs').promises;
 const path = require('path');
@@ -24,352 +21,209 @@ class Persistence {
     this.data = new Map();
     this.isSaving = false;
     this.saveQueue = [];
-    this.stats = {
-      reads: 0,
-      writes: 0,
-      saves: 0,
-      loads: 0,
-      errors: 0
-    };
+    this.stats = { reads: 0, writes: 0, saves: 0, loads: 0, errors: 0 };
 
-    this._ensureDirectory();
+    this._ensureDir();
   }
 
-  /**
-   * Ensure data directory exists
-   */
-  async _ensureDirectory() {
+  async _ensureDir() {
     try {
       const dir = path.dirname(this.filePath);
       await fs.access(dir);
-    } catch (error) {
+    } catch {
       await fs.mkdir(path.dirname(this.filePath), { recursive: true });
     }
   }
 
-  /**
-   * Load data from storage
-   */
   async load() {
-    const startTime = performance.now();
+    const t0 = performance.now();
     this.stats.loads++;
 
     try {
-      // Check if file exists
-      try {
-        await fs.access(this.filePath);
-      } catch (error) {
-        // File doesn't exist - start with empty data
+      try { await fs.access(this.filePath); } catch {
         this.data.clear();
         return new Map();
       }
 
-      // Read and parse data
-      const fileData = await fs.readFile(this.filePath, 'utf8');
-      
-      let parsedData;
+      const raw = await fs.readFile(this.filePath, 'utf8');
+
+      // compression and encryption are stubbed for now
+      // TODO: actually implement these if someone needs them
+      let parsed;
       if (this.options.compression) {
-        parsedData = await this._decompress(fileData);
+        parsed = JSON.parse(raw); // same thing for now lol
       } else if (this.options.encryption) {
-        parsedData = await this._decrypt(fileData);
+        if (!this.options.encryptionKey) throw new Error('need encryption key');
+        parsed = JSON.parse(raw); // placeholder
       } else {
-        parsedData = JSON.parse(fileData);
+        parsed = JSON.parse(raw);
       }
 
-      // Convert to Map
       this.data.clear();
-      for (const [key, value] of Object.entries(parsedData)) {
-        this.data.set(key, value);
+      for (const [k, v] of Object.entries(parsed)) {
+        this.data.set(k, v);
       }
 
-      const loadTime = performance.now() - startTime;
-      
       if (this.options.debug) {
-        console.log(`📁 Loaded ${this.data.size} records in ${loadTime.toFixed(2)}ms`);
+        const dt = performance.now() - t0;
+        console.log(`loaded ${this.data.size} records in ${dt.toFixed(2)}ms`);
       }
 
       return this.data;
-    } catch (error) {
+    } catch (e) {
       this.stats.errors++;
-      console.error('🚨 Persistence load error:', error);
-      
-      // Try to recover from backup
-      return await this._recoverFromBackup();
+      console.error('load failed:', e);
+      return await this._recover();
     }
   }
 
-  /**
-   * Save data to storage
-   */
   async save(data = null) {
     if (this.isSaving) {
-      // Queue the save request
+      // queue it up, dont lose writes
       return new Promise((resolve, reject) => {
         this.saveQueue.push({ data, resolve, reject });
       });
     }
 
     this.isSaving = true;
-    const startTime = performance.now();
     this.stats.saves++;
 
     try {
-      const saveData = data || this.data;
-      
-      // Convert Map to object for JSON serialization
-      const serializableData = Object.fromEntries(saveData);
+      const d = data || this.data;
+      const obj = Object.fromEntries(d);
 
-      let dataToSave;
+      // same stub situation as load
+      let output;
       if (this.options.compression) {
-        dataToSave = await this._compress(serializableData);
+        output = JSON.stringify(obj, null, 2);
       } else if (this.options.encryption) {
-        dataToSave = await this._encrypt(serializableData);
+        if (!this.options.encryptionKey) throw new Error('need encryption key');
+        output = JSON.stringify(obj, null, 2);
       } else {
-        dataToSave = JSON.stringify(serializableData, null, 2);
+        output = JSON.stringify(obj, null, 2);
       }
 
-      // Atomic write: write to temp file then rename
-      const tempPath = this.filePath + '.tmp';
-      await fs.writeFile(tempPath, dataToSave, 'utf8');
-      await fs.rename(tempPath, this.filePath);
-
-      const saveTime = performance.now() - startTime;
-      
-      if (this.options.debug) {
-        console.log(`💾 Saved ${saveData.size} records in ${saveTime.toFixed(2)}ms`);
-      }
+      // atomic write
+      const tmp = this.filePath + '.tmp';
+      await fs.writeFile(tmp, output, 'utf8');
+      await fs.rename(tmp, this.filePath);
 
       this.stats.writes++;
       return true;
-    } catch (error) {
+    } catch (e) {
       this.stats.errors++;
-      console.error('🚨 Persistence save error:', error);
-      throw error;
+      console.error('save error:', e);
+      throw e;
     } finally {
       this.isSaving = false;
-      
-      // Process next item in queue
-      if (this.saveQueue.length > 0) {
+
+      // process next in queue
+      if (this.saveQueue.length) {
         const next = this.saveQueue.shift();
-        this.save(next.data)
-          .then(next.resolve)
-          .catch(next.reject);
+        this.save(next.data).then(next.resolve).catch(next.reject);
       }
     }
   }
 
-  /**
-   * Set value in persistence
-   */
   async set(key, value) {
     this.data.set(key, value);
-    
-    if (this.options.autoSave) {
-      await this.save();
-    }
-    
+    if (this.options.autoSave) await this.save();
     return true;
   }
 
-  /**
-   * Get value from persistence
-   */
   async get(key) {
     this.stats.reads++;
     return this.data.get(key);
   }
 
-  /**
-   * Delete value from persistence
-   */
   async delete(key) {
-    const deleted = this.data.delete(key);
-    
-    if (deleted && this.options.autoSave) {
-      await this.save();
-    }
-    
-    return deleted;
+    const ok = this.data.delete(key);
+    if (ok && this.options.autoSave) await this.save();
+    return ok;
   }
 
-  /**
-   * Check if key exists
-   */
-  async has(key) {
-    return this.data.has(key);
-  }
+  async has(key) { return this.data.has(key); }
+  async getAll() { return new Map(this.data); }
 
-  /**
-   * Get all data
-   */
-  async getAll() {
-    return new Map(this.data);
-  }
-
-  /**
-   * Clear all data
-   */
   async clear() {
     this.data.clear();
-    
-    if (this.options.autoSave) {
-      await this.save();
-    }
-    
+    if (this.options.autoSave) await this.save();
     return true;
   }
 
-  /**
-   * Compression methods (placeholder - would use zlib in real implementation)
-   */
-  async _compress(data) {
-    // In a real implementation, this would use zlib or similar
-    // For now, just return stringified data
-    return JSON.stringify(data);
-  }
-
-  async _decompress(data) {
-    // In a real implementation, this would decompress
-    // For now, just parse JSON
-    return JSON.parse(data);
-  }
-
-  /**
-   * Encryption methods (placeholder)
-   */
-  async _encrypt(data) {
-    if (!this.options.encryptionKey) {
-      throw new Error('Encryption key required for encryption');
-    }
-    
-    // In a real implementation, this would use crypto
-    // For now, just return stringified data
-    return JSON.stringify(data);
-  }
-
-  async _decrypt(data) {
-    if (!this.options.encryptionKey) {
-      throw new Error('Encryption key required for decryption');
-    }
-    
-    // In a real implementation, this would decrypt
-    // For now, just parse JSON
-    return JSON.parse(data);
-  }
-
-  /**
-   * Backup and recovery
-   */
   async backup(backupPath = null) {
-    const path = backupPath || `${this.filePath}.backup_${Date.now()}`;
-    
+    const dest = backupPath || `${this.filePath}.backup_${Date.now()}`;
     try {
       await this.save();
-      await fs.copyFile(this.filePath, path);
-      
-      if (this.options.debug) {
-        console.log(`💾 Backup created: ${path}`);
-      }
-      
-      return path;
-    } catch (error) {
-      console.error('🚨 Backup failed:', error);
-      throw error;
+      await fs.copyFile(this.filePath, dest);
+      if (this.options.debug) console.log(`backup: ${dest}`);
+      return dest;
+    } catch (e) {
+      console.error('backup failed:', e);
+      throw e;
     }
   }
 
-  async _recoverFromBackup() {
+  async _recover() {
     try {
       const dir = path.dirname(this.filePath);
+      const base = path.basename(this.filePath);
       const files = await fs.readdir(dir);
-      const backupFiles = files
-        .filter(file => file.startsWith(path.basename(this.filePath) + '.backup_'))
-        .sort()
-        .reverse();
 
-      for (const backupFile of backupFiles) {
+      const backups = files
+        .filter(f => f.startsWith(base + '.backup_'))
+        .sort().reverse();
+
+      for (const bk of backups) {
         try {
-          const backupPath = path.join(dir, backupFile);
-          await fs.copyFile(backupPath, this.filePath);
-          
-          console.log(`🔧 Recovered from backup: ${backupFile}`);
+          const bkPath = path.join(dir, bk);
+          await fs.copyFile(bkPath, this.filePath);
+          console.log(`recovered from ${bk}`);
           return await this.load();
-        } catch (error) {
-          // Try next backup
-          continue;
-        }
+        } catch { continue; }
       }
-      
-      throw new Error('No valid backup found');
-    } catch (error) {
-      console.error('🚨 Recovery failed:', error);
-      // Return empty data as last resort
+      throw new Error('no valid backup');
+    } catch (e) {
+      console.error('recovery failed:', e);
       this.data.clear();
       return new Map();
     }
   }
 
-  /**
-   * Get persistence statistics
-   */
   getStats() {
     return {
       ...this.stats,
-      dataSize: this.data.size,
-      filePath: this.filePath,
-      isSaving: this.isSaving,
-      queueLength: this.saveQueue.length
+      size: this.data.size,
+      path: this.filePath,
+      busy: this.isSaving,
+      queued: this.saveQueue.length
     };
   }
 
-  /**
-   * Start auto-save interval
-   */
   startAutoSave() {
-    if (this.autoSaveInterval) {
-      clearInterval(this.autoSaveInterval);
-    }
-
-    this.autoSaveInterval = setInterval(() => {
+    if (this._autoTimer) clearInterval(this._autoTimer);
+    this._autoTimer = setInterval(() => {
       if (this.data.size > 0) {
-        this.save().catch(error => {
-          console.error('🚨 Auto-save failed:', error);
-        });
+        this.save().catch(e => console.error('autosave failed:', e));
       }
     }, this.options.saveInterval);
   }
 
-  /**
-   * Stop auto-save
-   */
   stopAutoSave() {
-    if (this.autoSaveInterval) {
-      clearInterval(this.autoSaveInterval);
-      this.autoSaveInterval = null;
+    if (this._autoTimer) {
+      clearInterval(this._autoTimer);
+      this._autoTimer = null;
     }
   }
 
-  /**
-   * Close persistence (cleanup)
-   */
   async close() {
     this.stopAutoSave();
-    
-    // Process remaining save queue
-    while (this.saveQueue.length > 0) {
+    // drain the queue before closing
+    while (this.saveQueue.length) {
       const { data, resolve, reject } = this.saveQueue.shift();
-      try {
-        await this.save(data);
-        resolve();
-      } catch (error) {
-        reject(error);
-      }
+      try { await this.save(data); resolve(); } catch (e) { reject(e); }
     }
-    
-    // Final save
-    if (this.data.size > 0) {
-      await this.save();
-    }
+    if (this.data.size > 0) await this.save();
   }
 }
 

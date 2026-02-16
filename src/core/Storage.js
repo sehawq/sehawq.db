@@ -1,9 +1,6 @@
-/**
- * Storage Layer - Handles all file I/O with performance optimizations
- * 
- * Because reading/writing files should be fast, not frustrating
- * Added some tricks I learned the hard way 🎯
- */
+// Storage Layer
+// Handles file I/O with atomic writes and backup support.
+// Not the most elegant code but it survives crashes.
 
 const fs = require('fs').promises;
 const path = require('path');
@@ -15,306 +12,194 @@ class Storage {
     this.options = {
       compression: false,
       backupOnWrite: true,
-      backupRetention: 5, // Keep last 5 backups
-      maxFileSize: 50 * 1024 * 1024, // 50MB limit
+      backupRetention: 5,
+      maxFileSize: 50 * 1024 * 1024, // 50mb should be enough for anyone right?
       ...options
     };
 
     this.writeQueue = [];
     this.isWriting = false;
-    this.stats = {
-      reads: 0,
-      writes: 0,
-      backups: 0,
-      errors: 0,
-      totalReadTime: 0,
-      totalWriteTime: 0
-    };
+    this.stats = { reads: 0, writes: 0, backups: 0, errors: 0, totalReadTime: 0, totalWriteTime: 0 };
 
-    this._ensureDirectory();
+    this._ensureDir();
   }
 
-  /**
-   * Make sure the directory exists
-   * Learned this the hard way - files don't create their own folders! 😅
-   */
-  async _ensureDirectory() {
+  async _ensureDir() {
     const dir = path.dirname(this.filePath);
-    try {
-      await fs.access(dir);
-    } catch (error) {
-      await fs.mkdir(dir, { recursive: true });
-    }
+    try { await fs.access(dir); } catch { await fs.mkdir(dir, { recursive: true }); }
   }
 
-  /**
-   * Read data with performance tracking and caching
-   */
   async read() {
-    const startTime = performance.now();
-    
+    const t0 = performance.now();
+
     try {
-      // Check if file exists first
-      try {
-        await fs.access(this.filePath);
-      } catch (error) {
-        // File doesn't exist - return empty data
-        return {};
-      }
+      try { await fs.access(this.filePath); } catch { return {}; }
 
-      const data = await fs.readFile(this.filePath, 'utf8');
-      
-      // Performance tracking
-      const readTime = performance.now() - startTime;
+      const raw = await fs.readFile(this.filePath, 'utf8');
+      const dt = performance.now() - t0;
       this.stats.reads++;
-      this.stats.totalReadTime += readTime;
+      this.stats.totalReadTime += dt;
 
-      if (this.options.debug) {
-        console.log(`📖 Read ${data.length} bytes in ${readTime.toFixed(2)}ms`);
-      }
+      if (this.options.debug) console.log(`Read ${raw.length} bytes in ${dt.toFixed(2)}ms`);
 
-      return JSON.parse(data);
-    } catch (error) {
+      return JSON.parse(raw);
+    } catch (e) {
       this.stats.errors++;
-      console.error('🚨 Storage read error:', error);
-      
-      // Try to recover from backup if main file is corrupted
-      return await this._recoverFromBackup();
+      console.error('read failed:', e);
+      return await this._tryRecovery();
     }
   }
 
-  /**
-   * Write data with queuing and atomic operations
-   * Prevents corruption and handles concurrent writes
-   */
+  // queued writes so we dont corrupt anything
   async write(data) {
     return new Promise((resolve, reject) => {
-      // Queue the write operation
       this.writeQueue.push({ data, resolve, reject });
-      
-      if (!this.isWriting) {
-        this._processWriteQueue();
-      }
+      if (!this.isWriting) this._drain();
     });
   }
 
-  /**
-   * Process write queue one by one
-   * Prevents race conditions and file corruption
-   */
-  async _processWriteQueue() {
-    if (this.writeQueue.length === 0 || this.isWriting) {
-      return;
-    }
-
+  async _drain() {
+    if (!this.writeQueue.length || this.isWriting) return;
     this.isWriting = true;
-    const startTime = performance.now();
+    const t0 = performance.now();
 
     try {
       const { data, resolve, reject } = this.writeQueue.shift();
 
-      // Check file size limit
-      const dataSize = Buffer.byteLength(JSON.stringify(data), 'utf8');
-      if (dataSize > this.options.maxFileSize) {
-        throw new Error(`File size limit exceeded: ${dataSize} > ${this.options.maxFileSize}`);
+      const json = JSON.stringify(data, null, 2);
+      if (Buffer.byteLength(json) > this.options.maxFileSize) {
+        throw new Error('file too big, refusing to write');
       }
 
-      // Create backup before writing
-      if (this.options.backupOnWrite) {
-        await this._createBackup();
-      }
+      if (this.options.backupOnWrite) await this._backup();
 
-      // Atomic write - write to temp file then rename
-      const tempPath = this.filePath + '.tmp';
-      const serializedData = JSON.stringify(data, null, 2);
-      
-      await fs.writeFile(tempPath, serializedData, 'utf8');
-      await fs.rename(tempPath, this.filePath);
+      // atomic write — tmp file then rename
+      const tmp = this.filePath + '.tmp';
+      await fs.writeFile(tmp, json, 'utf8');
+      await fs.rename(tmp, this.filePath);
 
-      // Performance tracking
-      const writeTime = performance.now() - startTime;
       this.stats.writes++;
-      this.stats.totalWriteTime += writeTime;
+      this.stats.totalWriteTime += performance.now() - t0;
 
-      if (this.options.debug) {
-        console.log(`💾 Written ${serializedData.length} bytes in ${writeTime.toFixed(2)}ms`);
-      }
+      if (this.options.debug) console.log(`Wrote ${json.length} bytes`);
 
       resolve();
-    } catch (error) {
+    } catch (e) {
       this.stats.errors++;
-      console.error('🚨 Storage write error:', error);
-      this.writeQueue[0]?.reject(error);
+      console.error('write failed:', e);
+      // TODO: should we reject here? for now just log it
+      this.writeQueue[0]?.reject(e);
     } finally {
       this.isWriting = false;
-      
-      // Process next item in queue
-      if (this.writeQueue.length > 0) {
-        setImmediate(() => this._processWriteQueue());
-      }
+      if (this.writeQueue.length) setImmediate(() => this._drain());
     }
   }
 
-  /**
-   * Create backup of current data file
-   * Saved my data more times than I can count! 💾
-   */
-  async _createBackup() {
+  async _backup() {
     try {
-      // Check if source file exists
-      try {
-        await fs.access(this.filePath);
-      } catch (error) {
-        // No file to backup - that's fine
-        return;
-      }
+      try { await fs.access(this.filePath); } catch { return; } // nothing to backup
 
-      const timestamp = new Date().toISOString()
+      const ts = new Date().toISOString()
         .replace(/[:.]/g, '-')
         .replace('T', '_')
         .split('.')[0];
-      
-      const backupPath = `${this.filePath}.backup_${timestamp}`;
-      
+
+      const backupPath = `${this.filePath}.backup_${ts}`;
       await fs.copyFile(this.filePath, backupPath);
       this.stats.backups++;
 
-      // Clean up old backups
-      await this._cleanupOldBackups();
+      await this._pruneBackups();
 
-      if (this.options.debug) {
-        console.log(`🔐 Backup created: ${backupPath}`);
-      }
-    } catch (error) {
-      console.error('🚨 Backup creation failed:', error);
-      // Don't throw - backup failure shouldn't block main write
+      if (this.options.debug) console.log(`backup: ${backupPath}`);
+    } catch (e) {
+      console.error('backup failed:', e); // not fatal, keep going
     }
   }
 
-  /**
-   * Keep only the most recent backups
-   */
-  async _cleanupOldBackups() {
+  // remove old backups, keep only N most recent
+  async _pruneBackups() {
     try {
       const dir = path.dirname(this.filePath);
-      const fileName = path.basename(this.filePath);
-      
+      const base = path.basename(this.filePath);
       const files = await fs.readdir(dir);
-      const backupFiles = files
-        .filter(file => file.startsWith(fileName + '.backup_'))
+
+      const backups = files
+        .filter(f => f.startsWith(base + '.backup_'))
         .sort()
         .reverse();
 
-      // Remove old backups beyond retention limit
-      for (const file of backupFiles.slice(this.options.backupRetention)) {
-        await fs.unlink(path.join(dir, file));
-        
-        if (this.options.debug) {
-          console.log(`🗑️  Cleaned up old backup: ${file}`);
-        }
+      // delete anything past retention limit
+      for (const old of backups.slice(this.options.backupRetention)) {
+        await fs.unlink(path.join(dir, old));
+        if (this.options.debug) console.log(`pruned: ${old}`);
       }
-    } catch (error) {
-      console.error('🚨 Backup cleanup failed:', error);
+    } catch (e) {
+      console.error('cleanup failed:', e);
     }
   }
 
-  /**
-   * Try to recover data from backup if main file is corrupted
-   */
-  async _recoverFromBackup() {
+  // try to recover from a backup if main file is corrupted
+  async _tryRecovery() {
     try {
       const dir = path.dirname(this.filePath);
-      const fileName = path.basename(this.filePath);
-      
+      const base = path.basename(this.filePath);
       const files = await fs.readdir(dir);
-      const backupFiles = files
-        .filter(file => file.startsWith(fileName + '.backup_'))
-        .sort()
-        .reverse();
 
-      for (const backupFile of backupFiles) {
+      const backups = files
+        .filter(f => f.startsWith(base + '.backup_'))
+        .sort().reverse();
+
+      for (const bk of backups) {
         try {
-          const backupPath = path.join(dir, backupFile);
-          const data = await fs.readFile(backupPath, 'utf8');
+          const data = await fs.readFile(path.join(dir, bk), 'utf8');
           const parsed = JSON.parse(data);
-          
-          console.log(`🔧 Recovered data from backup: ${backupFile}`);
-          
-          // Restore the backup to main file
+          console.log(`recovered from: ${bk}`);
           await this.write(parsed);
-          
           return parsed;
-        } catch (error) {
-          // This backup is also corrupted, try next one
-          continue;
+        } catch {
+          continue; // try next backup
         }
       }
-      
-      throw new Error('No valid backup found for recovery');
-    } catch (error) {
-      console.error('🚨 Recovery from backup failed:', error);
-      return {}; // Return empty data as last resort
+
+      throw new Error('no usable backup found');
+    } catch (e) {
+      console.error('recovery failed:', e);
+      return {};
     }
   }
 
-  /**
-   * Get storage statistics
-   */
   getStats() {
     return {
       ...this.stats,
-      avgReadTime: this.stats.reads > 0 
-        ? (this.stats.totalReadTime / this.stats.reads).toFixed(2) + 'ms'
-        : '0ms',
-      avgWriteTime: this.stats.writes > 0 
-        ? (this.stats.totalWriteTime / this.stats.writes).toFixed(2) + 'ms'
-        : '0ms',
-      queueLength: this.writeQueue.length,
-      isWriting: this.isWriting
+      avgRead: this.stats.reads ? (this.stats.totalReadTime / this.stats.reads).toFixed(2) + 'ms' : '0ms',
+      avgWrite: this.stats.writes ? (this.stats.totalWriteTime / this.stats.writes).toFixed(2) + 'ms' : '0ms',
+      queueLen: this.writeQueue.length,
+      busy: this.isWriting
     };
   }
 
-  /**
-   * Manual backup creation
-   */
-  async createBackup() {
-    return await this._createBackup();
-  }
+  // public wrappers
+  createBackup() { return this._backup(); }
 
-  /**
-   * Get list of available backups
-   */
   async listBackups() {
     try {
       const dir = path.dirname(this.filePath);
-      const fileName = path.basename(this.filePath);
-      
+      const base = path.basename(this.filePath);
       const files = await fs.readdir(dir);
-      return files
-        .filter(file => file.startsWith(fileName + '.backup_'))
-        .sort()
-        .reverse();
-    } catch (error) {
-      return [];
-    }
+      return files.filter(f => f.startsWith(base + '.backup_')).sort().reverse();
+    } catch { return []; }
   }
 
-  /**
-   * Restore from specific backup
-   */
-  async restoreBackup(backupName) {
-    const backupPath = path.join(path.dirname(this.filePath), backupName);
-    
+  async restoreBackup(name) {
+    const bkPath = path.join(path.dirname(this.filePath), name);
     try {
-      const data = await fs.readFile(backupPath, 'utf8');
-      const parsed = JSON.parse(data);
-      
-      await this.write(parsed);
-      console.log(`✅ Restored from backup: ${backupName}`);
-      
-      return parsed;
-    } catch (error) {
-      throw new Error(`Failed to restore backup ${backupName}: ${error.message}`);
+      const raw = await fs.readFile(bkPath, 'utf8');
+      const data = JSON.parse(raw);
+      await this.write(data);
+      console.log(`restored: ${name}`);
+      return data;
+    } catch (e) {
+      throw new Error(`restore failed for ${name}: ${e.message}`);
     }
   }
 }

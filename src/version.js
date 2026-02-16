@@ -1,38 +1,31 @@
-/**
- * SehawqDB Version Information
- * 
- * Because knowing your version is kinda important 😅
- */
+// Version info
+// reads from package.json so we dont have to update it in two places
 
-const packageJson = require('../package.json');
+const pkg = require('../package.json');
 
 module.exports = {
-  version: packageJson.version,
-  name: packageJson.name,
-  description: packageJson.description,
-  author: packageJson.author,
-  license: packageJson.license,
-  
-  getVersion() {
-    return this.version;
-  },
-  
+  version: pkg.version,
+  name: pkg.name,
+  description: pkg.description,
+  author: pkg.author,
+  license: pkg.license,
+
+  getVersion() { return this.version; },
+
   getInfo() {
     return {
       name: this.name,
       version: this.version,
       description: this.description,
-      author: this.author,
-      license: this.license
+      author: this.author
     };
   },
-  
-  // Compatibility check
-  isCompatibleWith(version) {
-    const current = this.version.split('.').map(Number);
-    const target = version.split('.').map(Number);
-    
-    // Major version must match, minor can be equal or higher
-    return current[0] === target[0] && current[1] >= target[1];
+
+  // check if a version is compatible with current
+  // major must match, minor can be same or higher
+  isCompatibleWith(ver) {
+    const cur = this.version.split('.').map(Number);
+    const target = ver.split('.').map(Number);
+    return cur[0] === target[0] && cur[1] >= target[1];
   }
 };
