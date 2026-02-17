@@ -13,12 +13,6 @@ First off, thanks for taking the time to contribute! 🎉
 7.  **Push** to the branch (`git push origin feature/amazing-feature`).
 8.  Open a **Pull Request**.
 
-## Code Style
-
-*   We use **Human-Write** style: Simple, readable, no over-engineering.
-*   Comments should be friendly and helpful.
-*   No TypeScript in source (we use JSDoc/index.d.ts).
-
 ## Reporting Bugs
 
 Please use the [Bug Report Template](https://github.com/sehawq/sehawq.db/issues/new?assignees=&labels=bug&template=bug_report.yml).
